@@ -18,6 +18,7 @@ add_clang_library(clangTidyBugproneModule STATIC
   ComparePointerToMemberVirtualFunctionCheck.cpp
   CopyConstructorInitCheck.cpp
   CrtpConstructorAccessibilityCheck.cpp
+  CountBranchesCheck.cpp
   DanglingHandleCheck.cpp
   DynamicStaticInitializersCheck.cpp
   EasilySwappableParametersCheck.cpp

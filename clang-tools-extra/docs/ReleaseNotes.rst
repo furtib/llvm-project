@@ -121,8 +121,27 @@ New checks
 - New :doc:`llvm-mlir-op-builder
   <clang-tidy/checks/llvm/use-new-mlir-op-builder>` check.
 
-  Checks for uses of MLIR's old/to be deprecated ``OpBuilder::create<T>`` form
-  and suggests using ``T::create`` instead.
+- New :doc:`readability-use-std-min-max
+  <clang-tidy/checks/readability/use-std-min-max>` check.
+
+- New :doc:`bugprone-count-branches
+  <clang-tidy/checks/bugprone-count-branches>` check.
+
+  FIXME: add release notes.
+
+- New :doc:`cppcoreguidelines-avoid-non-const-global-variables
+  <clang-tidy/checks/cppcoreguidelines-avoid-non-const-global-variables>` check.
+  Finds non-const global variables as described in check I.2 of C++ Core
+  Guidelines.
+
+  Finds unintended character output from ``unsigned char`` and ``signed char``
+  to an ``ostream``.
+
+- New :doc:`readability-ambiguous-smartptr-reset-call
+  <clang-tidy/checks/readability/ambiguous-smartptr-reset-call>` check.
+
+  Finds potentially erroneous calls to ``reset`` method on smart pointers when
+  the pointee type also has a ``reset`` method.
 
 New check aliases
 ^^^^^^^^^^^^^^^^^
