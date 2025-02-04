@@ -8,7 +8,11 @@
 
 #include "CountBranchesCheck.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/ExprCXX.h"
+#include "clang/AST/Stmt.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
+#include "llvm/Support/Casting.h"
 
 using namespace clang::ast_matchers;
 
@@ -30,9 +34,11 @@ void CountBranchesCheck::registerMatchers(MatchFinder *Finder) {
   .with(hasCondition(expr().bind("cond"))),this);
 }
 
-static bool isNumberLiteral(const Expr *e) {
-	if (llvm::dyn_cast_or_null<IntegerLiteral>(e->IgnoreParenImpCasts())) return true;
-	if (llvm::dyn_cast_or_null<FloatingLiteral>(e->IgnoreParenImpCasts())) return true;
+static bool isLiteral(const Expr *e) {
+	if (llvm::dyn_cast_or_null<CXXBoolLiteralExpr>(e->IgnoreParenImpCasts())) return true; // what if if(true)?
+	if (llvm::dyn_cast_or_null<CharacterLiteral>(e->IgnoreParenImpCasts())) return true; // what if if('a')?
+	if (llvm::dyn_cast_or_null<IntegerLiteral>(e->IgnoreParenImpCasts())) return true; // what if if(0)?
+	if (llvm::dyn_cast_or_null<FloatingLiteral>(e->IgnoreParenImpCasts())) return true; // what if if(0.0)?
 	return false;
 }
 
@@ -42,7 +48,7 @@ static bool isEssentiallyDeclRefExpr(const Expr *e) {
 
 static bool expressionUsesVariable(const Expr *e) {
 	if (!e) return false;
-	if (isNumberLiteral(e)) {
+	if (isLiteral(e)) {
 		return false;
 	}
 	if (isEssentiallyDeclRefExpr(e)) {
@@ -210,14 +216,14 @@ static const Expr* unwrapOpaqueValueExpr(const Expr *e) {
 
 static bool isLinearExpr(const Expr *expr) {
 	if (!expr) {
-		return false; 
+		return false;
 	}
 
-	if (isNumberLiteral(expr)) {
+	if (isLiteral(expr)) {
 		return true;
 	}
 
-	if (isEssentiallyDeclRefExpr(expr)) { 
+	if (isEssentiallyDeclRefExpr(expr)) {
 		return true;
 	}
 
