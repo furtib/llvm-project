@@ -26,8 +26,8 @@ public:
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 private:
-  template <typename T>
-  void checkLinearity(const T *stmt);
+  //template <typename T>
+  void checkLinearity(const Expr *stmt);
   int Total;
   int Linear;
 };
