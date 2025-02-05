@@ -43,6 +43,9 @@ static bool isLiteral(const Expr *e) {
 }
 
 static bool isEssentiallyDeclRefExpr(const Expr *e) {
+	auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParenImpCasts()); // what if if(!x)?
+	if (u)
+		return isEssentiallyDeclRefExpr(u->getSubExpr()); // what if if(!!!!!!!!x)
 	return nullptr != llvm::dyn_cast_or_null<DeclRefExpr>(e->IgnoreParenImpCasts());
 }
 
