@@ -8,11 +8,15 @@
 
 #include "CountBranchesCheck.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Stmt.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "llvm/Support/Casting.h"
+#include <llvm/ADT/SmallSet.h>
+#include <llvm/ADT/Twine.h>
+#include <stack>
 
 using namespace clang::ast_matchers;
 
@@ -243,19 +247,61 @@ static bool isLinearExpr(const Expr *expr) {
 	return false;
 }
 
-template <typename T>
-void CountBranchesCheck::checkLinearity(const T *stmt) {
+int countVariables(const Expr *expr){
+	if (!expr) return 0;
+	if (isEssentiallyDeclRefExpr(expr)) {
+		return 1;
+	}
+	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParens());
+	if (binaryOp) {
+		llvm::SmallSet<std::string, 8> names; // who the hell uses more than 8 vars in one condition
+		std::stack<const Expr*> stack;
+		stack.push(binaryOp->getLHS()->IgnoreImpCasts());
+		stack.push(binaryOp->getRHS()->IgnoreImpCasts());
+		while (!stack.empty()) {
+			const Expr *e = stack.top();
+			stack.pop();
+			// if its a variable, count it
+			const DeclRefExpr* var = llvm::dyn_cast_or_null<DeclRefExpr>(e->IgnoreParenImpCasts());
+			if (var != nullptr && var->getDecl() != nullptr && !names.contains(var->getDecl()->getNameAsString())) {
+				names.insert(var->getDecl()->getNameAsString());
+			}
+			// if its an unary operator, push its child
+			const auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParens());
+			if (u) {
+				stack.push(u->getSubExpr()->IgnoreImpCasts());
+			}
+			// if its a binary operator, push its children
+			const auto *b = llvm::dyn_cast_or_null<BinaryOperator>(e->IgnoreParens());
+			if (b) {
+				stack.push(b->getLHS()->IgnoreImpCasts());
+				stack.push(b->getRHS()->IgnoreImpCasts());
+			}
+			// walk into parentheses
+			const auto *parenExpr = llvm::dyn_cast_or_null<ParenExpr>(e->IgnoreParens());
+			if (parenExpr) {
+				stack.push(parenExpr->getSubExpr()->IgnoreImpCasts());
+			}
+		}
+		return names.size();
+	}
+	return 0;
+}
+
+//template <typename T>
+void CountBranchesCheck::checkLinearity(const Expr *stmt) {
 	if (!stmt) return;
 	//if (stmt->getCond()) {
 		if (isLinearExpr(stmt)) {
-			if (llvm::dyn_cast_or_null<DoStmt>(stmt)) {
+			diag(stmt->getBeginLoc(), "Linear var: " + llvm::Twine(countVariables(stmt)).str()) << stmt->getSourceRange();
+			/*if (llvm::dyn_cast_or_null<DoStmt>(stmt)) {
 				diag(stmt->getEndLoc(), "Linear");
 			} else {
 				diag(stmt->getBeginLoc(), "Linear");
-			}
+			}*/
 			Linear += 1;
 		} else {
-			diag(stmt->getBeginLoc(), "Non-Linear");
+			diag(stmt->getBeginLoc(), "Non-Linear var: " + llvm::Twine(countVariables(stmt)).str()) << stmt->getSourceRange();
 		}
 	//}
 }
