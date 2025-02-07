@@ -41,6 +41,7 @@ void CountBranchesCheck::registerMatchers(MatchFinder *Finder) {
 static bool isLiteral(const Expr *e) {
 	if (llvm::dyn_cast_or_null<CXXBoolLiteralExpr>(e->IgnoreParenImpCasts())) return true; // what if if(true)?
 	if (llvm::dyn_cast_or_null<CharacterLiteral>(e->IgnoreParenImpCasts())) return true; // what if if('a')?
+	if (llvm::dyn_cast_or_null<StringLiteral>(e->IgnoreParenImpCasts())) return true; // what if if("hi")?
 	if (llvm::dyn_cast_or_null<IntegerLiteral>(e->IgnoreParenImpCasts())) return true; // what if if(0)?
 	if (llvm::dyn_cast_or_null<FloatingLiteral>(e->IgnoreParenImpCasts())) return true; // what if if(0.0)?
 	return false;
