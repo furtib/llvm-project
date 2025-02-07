@@ -31,8 +31,8 @@ void CountBranchesCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(doStmt().bind("DoStmt"), this);
   Finder->addMatcher(forStmt().bind("ForStmt"), this);
   Finder->addMatcher(switchStmt().bind("SwitchStmt"), this);
-  Finder->addMatcher(conditionalOperator().bind("ConditionalOperator"), this);
-  Finder->addMatcher(binaryConditionalOperator().bind("BinaryConditionalOperator"), this);
+  Finder->addMatcher(conditionalOperator().bind("ConditionalOperator"), this); // x ? y : z;
+  Finder->addMatcher(binaryConditionalOperator().bind("BinaryConditionalOperator"), this); // x ?: y;
   */
   Finder->addMatcher(mapAnyOf(ifStmt, whileStmt, doStmt, forStmt, switchStmt, conditionalOperator, binaryConditionalOperator)
   .with(hasCondition(expr().bind("cond"))),this);
