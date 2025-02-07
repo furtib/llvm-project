@@ -248,6 +248,58 @@ static bool isLinearExpr(const Expr *expr) {
 	return false;
 }
 
+int countFunctions(const Expr *expr){
+	if (!expr) return 0;
+	const auto *callExpr = llvm::dyn_cast_or_null<CallExpr>(expr->IgnoreParens());
+	if (callExpr) {
+		return 1;
+	}
+	int fn = 0;
+	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParens());
+	const auto *unaryOp = llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParens());
+	if (binaryOp || unaryOp) {
+		std::stack<const Expr*> stack;
+		if(binaryOp){
+			stack.push(binaryOp->getLHS()->IgnoreImpCasts());
+			stack.push(binaryOp->getRHS()->IgnoreImpCasts());
+		}
+		if(unaryOp){
+			stack.push(unaryOp->getSubExpr()->IgnoreParens());
+		}
+		while (!stack.empty()) {
+			const Expr *e = stack.top();
+			stack.pop();
+			// if its a function call, count it
+			const auto *call = llvm::dyn_cast_or_null<CallExpr>(e->IgnoreParens());
+			if (call) {
+				fn++;
+				unsigned int argCount = call->getNumArgs();
+				const Expr* const *args = call->getArgs();
+				for (unsigned int i = 0; i < argCount; i += 1) {
+					stack.push(args[i]->IgnoreImpCasts());
+				}
+			}
+			// if its an unary operator, push its child
+			const auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParens());
+			if (u) {
+				stack.push(u->getSubExpr()->IgnoreImpCasts());
+			}
+			// if its a binary operator, push its children
+			const auto *b = llvm::dyn_cast_or_null<BinaryOperator>(e->IgnoreParens());
+			if (b) {
+				stack.push(b->getLHS()->IgnoreImpCasts());
+				stack.push(b->getRHS()->IgnoreImpCasts());
+			}
+			// walk into parentheses
+			const auto *parenExpr = llvm::dyn_cast_or_null<ParenExpr>(e->IgnoreParens());
+			if (parenExpr) {
+				stack.push(parenExpr->getSubExpr()->IgnoreImpCasts());
+			}
+		}
+	}
+	return fn;
+}
+
 int countVariables(const Expr *expr){
 	if (!expr) return 0;
 	if (isEssentiallyDeclRefExpr(expr)) {
@@ -283,18 +335,27 @@ int countVariables(const Expr *expr){
 			if (parenExpr) {
 				stack.push(parenExpr->getSubExpr()->IgnoreImpCasts());
 			}
+			const auto *call = llvm::dyn_cast_or_null<CallExpr>(e->IgnoreParens());
+			if (call) {
+				unsigned int argCount = call->getNumArgs();
+				const Expr* const *args = call->getArgs();
+				for (unsigned int i = 0; i < argCount; i += 1) {
+					stack.push(args[i]->IgnoreImpCasts());
+				}
+			}
 		}
 		return names.size();
 	}
 	return 0;
 }
 
+
 //template <typename T>
 void CountBranchesCheck::checkLinearity(const Expr *stmt) {
 	if (!stmt) return;
 	//if (stmt->getCond()) {
 		if (isLinearExpr(stmt)) {
-			diag(stmt->getBeginLoc(), "Linear var: " + llvm::Twine(countVariables(stmt)).str()) << stmt->getSourceRange();
+			diag(stmt->getBeginLoc(), "Linear var: " + llvm::Twine(countVariables(stmt)).str() + " func: " + llvm::Twine(countFunctions(stmt)).str()) << stmt->getSourceRange();
 			/*if (llvm::dyn_cast_or_null<DoStmt>(stmt)) {
 				diag(stmt->getEndLoc(), "Linear");
 			} else {
@@ -302,7 +363,7 @@ void CountBranchesCheck::checkLinearity(const Expr *stmt) {
 			}*/
 			Linear += 1;
 		} else {
-			diag(stmt->getBeginLoc(), "Non-Linear var: " + llvm::Twine(countVariables(stmt)).str()) << stmt->getSourceRange();
+			diag(stmt->getBeginLoc(), "Non-Linear var: " + llvm::Twine(countVariables(stmt)).str()  + " func: " + llvm::Twine(countFunctions(stmt)).str()) << stmt->getSourceRange();
 		}
 	//}
 }
