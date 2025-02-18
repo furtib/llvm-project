@@ -8,15 +8,19 @@
 
 #include "CountBranchesCheck.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/OperationKinds.h"
 #include "clang/AST/Stmt.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/Basic/TokenKinds.h"
 #include "llvm/Support/Casting.h"
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/ADT/Twine.h>
 #include <stack>
+#include <algorithm>
 
 using namespace clang::ast_matchers;
 
@@ -247,6 +251,124 @@ static bool isLinearExpr(const Expr *expr) {
 
 	return false;
 }
+const std::set<StringRef> NonLinears = {
+		// Exponential functions
+		"exp",
+		"expf",
+		"expl",
+		"exp2",
+		"exp2f",
+		"exp2l",
+		"expm1",
+		"expm1f",
+		"expm1l",
+		"log",
+		"logf",
+		"logl",
+		"log10",
+		"log10f",
+		"log10l",
+		"log2",
+		"log2f",
+		"log2l",
+		"log1p",
+		"log1pf",
+		"log1pl",
+
+		// Power functions
+		"pow",
+		"powf",
+		"powl",
+		"sqrt",
+		"sqrtf",
+		"sqrtl",
+		"cbrt",
+		"cbrtf",
+		"cbrtl",
+		"hypot",
+		"hypotf",
+		"hypotl",
+
+		// Trigonometric functions
+		"sin",
+		"sinf",
+		"sinl",
+		"cos",
+		"cosf",
+		"cosl",
+		"tan",
+		"tanf",
+		"tanl",
+		"asin",
+		"asinf",
+		"asinl",
+		"acos",
+		"acosf",
+		"acosl",
+		"atan",
+		"atanf",
+		"atanl",
+		"atan2",
+		"atan2f",
+		"atan2l",
+
+		// Hyperbolic functions
+		"sinh",
+		"sinhf",
+		"sinhl",
+		"cosh",
+		"coshf",
+		"coshl",
+		"tanh",
+		"tanhf",
+		"tanhl",
+		"asinh",
+		"asinhf",
+		"asinhl",
+		"acosh",
+		"acoshf",
+		"acoshl",
+		"atanh",
+		"atanhf",
+		"atanhl",
+		"atan2",
+		"atan2f",
+		"atan2l",
+	};
+
+int countDegree(const Expr *expr){
+	if (!expr) return 0; // this shouldn't occure
+	if(isLiteral(expr) || isEssentiallyDeclRefExpr(expr)) return 1;
+	int deg = 1;
+	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenImpCasts());
+	if (binaryOp) {
+		switch(binaryOp->getOpcode()){
+			case BO_Mul: // overflow into the next one
+			case BO_MulAssign:
+				if(isLiteral(binaryOp->getLHS()) || isLiteral(binaryOp->getRHS()))
+					break;
+				deg = 1 + std::max(
+					countDegree(binaryOp->getLHS()->IgnoreParenImpCasts()),
+					countDegree(binaryOp->getRHS()->IgnoreParenImpCasts())
+				);
+				break;
+			default:
+				deg = std::max(
+					countDegree(binaryOp->getLHS()->IgnoreParenImpCasts()),
+					countDegree(binaryOp->getRHS()->IgnoreParenImpCasts())
+				);
+				break;
+		}
+	}
+	const auto *callOp = llvm::dyn_cast_or_null<CallExpr>(expr->IgnoreParenImpCasts());
+	if(callOp){
+		const FunctionDecl *f = callOp->getDirectCallee();
+		if(NonLinears.find(f->getCanonicalDecl()->getName()) != NonLinears.end()){ // miért kell a canonical?
+			deg++;
+		}
+	}
+	return deg;
+}
 
 int countFunctions(const Expr *expr){
 	if (!expr) return 0;
@@ -381,7 +503,8 @@ void CountBranchesCheck::checkLinearity(const Expr *stmt) {
 	if (!stmt) return;
 	//if (stmt->getCond()) {
 		if (isLinearExpr(stmt)) {
-			diag(stmt->getBeginLoc(), "Linear var: " + llvm::Twine(countVariables(stmt)).str() + " func: " + llvm::Twine(countFunctions(stmt)).str()) << stmt->getSourceRange();
+			diag(stmt->getBeginLoc(), "Linear var: " + llvm::Twine(countVariables(stmt)).str()
+				+ " func: " + llvm::Twine(countFunctions(stmt)).str() + " deg: " + llvm::Twine(countDegree(stmt)).str()) << stmt->getSourceRange();
 			/*if (llvm::dyn_cast_or_null<DoStmt>(stmt)) {
 				diag(stmt->getEndLoc(), "Linear");
 			} else {
@@ -389,7 +512,8 @@ void CountBranchesCheck::checkLinearity(const Expr *stmt) {
 			}*/
 			Linear += 1;
 		} else {
-			diag(stmt->getBeginLoc(), "Non-Linear var: " + llvm::Twine(countVariables(stmt)).str()  + " func: " + llvm::Twine(countFunctions(stmt)).str()) << stmt->getSourceRange();
+			diag(stmt->getBeginLoc(), "Non-Linear var: " + llvm::Twine(countVariables(stmt)).str()
+				+ " func: " + llvm::Twine(countFunctions(stmt)).str() + " deg: " + llvm::Twine(countDegree(stmt)).str()) << stmt->getSourceRange();
 		}
 	//}
 }
