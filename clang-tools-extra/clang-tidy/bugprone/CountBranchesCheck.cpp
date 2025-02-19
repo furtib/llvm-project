@@ -342,8 +342,22 @@ int countDegree(const Expr *expr){
 	int deg = 1;
 	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenImpCasts());
 	if (binaryOp) {
+		// multiplicative operators defined by clang:
+		// static bool isMultiplicativeOp(Opcode Opc) {
+		// 	return Opc >= BO_Mul && Opc <= BO_Rem;
+		// }
+		// from clang/AST/OperationKinds.def
+		// [C99 6.5.5] Multiplicative operators.
+		// BINARY_OPERATION(Mul, "*")
+		// BINARY_OPERATION(Div, "/")
+		// BINARY_OPERATION(Rem, "%")
 		switch(binaryOp->getOpcode()){
-			case BO_Mul: // overflow into the next one
+			// overflow into the next one
+			case BO_Div:
+			case BO_DivAssign:
+			case BO_Rem:
+			case BO_RemAssign:
+			case BO_Mul:
 			case BO_MulAssign:
 				if(isLiteral(binaryOp->getLHS()) || isLiteral(binaryOp->getRHS()))
 					break;
