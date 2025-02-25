@@ -337,7 +337,7 @@ const std::set<StringRef> NonLinears = {
 	};
 
 int countDegree(const Expr *expr){
-	if (!expr) return 0; // this shouldn't occure
+	if (!expr) return 0;
 	if(isLiteral(expr) || isEssentiallyDeclRefExpr(expr)) return 1;
 	int deg = 1;
 	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenImpCasts());
@@ -378,7 +378,13 @@ int countDegree(const Expr *expr){
 	if(callOp){
 		const FunctionDecl *f = callOp->getDirectCallee();
 		if(NonLinears.find(f->getCanonicalDecl()->getName()) != NonLinears.end()){ // miért kell a canonical?
-			deg++;
+			deg++; // could also get proper degree from pow, powf, powl
+		}
+
+		unsigned int argCount = callOp->getNumArgs();
+		const Expr* const *args = callOp->getArgs();
+		for (unsigned int i = 0; i < argCount; i += 1) {
+			deg = std::max(deg, countDegree(args[i]));
 		}
 	}
 	return deg;
