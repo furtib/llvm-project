@@ -29,17 +29,8 @@ namespace tidy {
 namespace bugprone {
 
 void CountBranchesCheck::registerMatchers(MatchFinder *Finder) {
-  /*
-  Finder->addMatcher(ifStmt().bind("IfStmt"), this);
-  Finder->addMatcher(whileStmt().bind("WhileStmt"), this);
-  Finder->addMatcher(doStmt().bind("DoStmt"), this);
-  Finder->addMatcher(forStmt().bind("ForStmt"), this);
-  Finder->addMatcher(switchStmt().bind("SwitchStmt"), this);
-  Finder->addMatcher(conditionalOperator().bind("ConditionalOperator"), this); // x ? y : z;
-  Finder->addMatcher(binaryConditionalOperator().bind("BinaryConditionalOperator"), this); // x ?: y;
-  */
-  Finder->addMatcher(mapAnyOf(ifStmt, whileStmt, doStmt, forStmt, switchStmt, conditionalOperator, binaryConditionalOperator)
-  .with(hasCondition(expr().bind("cond"))),this);
+	Finder->addMatcher(mapAnyOf(ifStmt, whileStmt, doStmt, forStmt, switchStmt, conditionalOperator, binaryConditionalOperator)
+		.with(hasCondition(expr().bind("cond"))),this);
 }
 
 static bool isLiteral(const Expr *e) {
@@ -535,16 +526,11 @@ void CountBranchesCheck::checkLinearity(const Expr *stmt) {
 	if (!stmt) return;
 	//if (stmt->getCond()) {
 		if (isLinearExpr(stmt)) {
-			diag(stmt->getBeginLoc(), "Linear var: " + llvm::Twine(countVariables(stmt)).str()
+			diag(stmt->getBeginLoc(), "var: " + llvm::Twine(countVariables(stmt)).str()
 				+ " func: " + llvm::Twine(countFunctions(stmt)).str() + " deg: " + llvm::Twine(countDegree(stmt)).str()) << stmt->getSourceRange();
-			/*if (llvm::dyn_cast_or_null<DoStmt>(stmt)) {
-				diag(stmt->getEndLoc(), "Linear");
-			} else {
-				diag(stmt->getBeginLoc(), "Linear");
-			}*/
 			Linear += 1;
 		} else {
-			diag(stmt->getBeginLoc(), "Non-Linear var: " + llvm::Twine(countVariables(stmt)).str()
+			diag(stmt->getBeginLoc(), "var: " + llvm::Twine(countVariables(stmt)).str()
 				+ " func: " + llvm::Twine(countFunctions(stmt)).str() + " deg: " + llvm::Twine(countDegree(stmt)).str()) << stmt->getSourceRange();
 		}
 	//}
@@ -553,15 +539,6 @@ void CountBranchesCheck::checkLinearity(const Expr *stmt) {
 void CountBranchesCheck::check(const MatchFinder::MatchResult &Result) {
   Total += 1;
   checkLinearity(Result.Nodes.getNodeAs<Expr>("cond"));
-  /*
-  checkLinearity(Result.Nodes.getNodeAs<IfStmt>("IfStmt"));
-  checkLinearity(Result.Nodes.getNodeAs<WhileStmt>("WhileStmt"));
-  checkLinearity(Result.Nodes.getNodeAs<DoStmt>("DoStmt"));
-  checkLinearity(Result.Nodes.getNodeAs<ForStmt>("ForStmt"));
-  checkLinearity(Result.Nodes.getNodeAs<SwitchStmt>("SwitchStmt"));
-  checkLinearity(Result.Nodes.getNodeAs<ConditionalOperator>("ConditionalOperator"));
-  checkLinearity(Result.Nodes.getNodeAs<BinaryConditionalOperator>("BinaryConditionalOperator"));
-  */
 }
 
 } // namespace bugprone
