@@ -52,7 +52,6 @@ static bool isLiteral(const Expr *e) {
 }
 
 static bool isEssentiallyDeclRefExpr(const Expr *e) {
-	if (u)
 	if (!e) return false;
     e = e->IgnoreParenImpCasts();
     if (!e) return false;
