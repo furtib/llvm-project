@@ -470,7 +470,8 @@ int countVariables(const Expr *expr){
 	}
 	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenImpCasts());
 	const auto *conditionalOp = llvm::dyn_cast_or_null<ConditionalOperator>(expr->IgnoreParenImpCasts());
-	if (binaryOp || conditionalOp) {
+	const auto *unaryOp = llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenImpCasts());
+	if (binaryOp || conditionalOp || unaryOp) {
 		llvm::SmallSet<std::string, 8> names; // who the hell uses more than 8 vars in one condition
 		std::stack<const Expr*> stack;
 		if(binaryOp){
@@ -481,6 +482,9 @@ int countVariables(const Expr *expr){
 			stack.push(conditionalOp->getCond()->IgnoreParenImpCasts());
 			stack.push(conditionalOp->getTrueExpr()->IgnoreParenImpCasts());
 			stack.push(conditionalOp->getFalseExpr()->IgnoreParenImpCasts());
+		}
+		if(unaryOp){
+			stack.push(unaryOp->getSubExpr()->IgnoreParenImpCasts());
 		}
 		while (!stack.empty()) {
 			const Expr *e = stack.top();
