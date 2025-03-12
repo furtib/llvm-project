@@ -34,18 +34,18 @@ void CountBranchesCheck::registerMatchers(MatchFinder *Finder) {
 }
 
 static bool isLiteral(const Expr *e) {
-	if (llvm::dyn_cast_or_null<CXXBoolLiteralExpr>(e->IgnoreParenImpCasts())) return true; // what if if(true)?
-	if (llvm::dyn_cast_or_null<CharacterLiteral>(e->IgnoreParenImpCasts())) return true; // what if if('a')?
-	if (llvm::dyn_cast_or_null<StringLiteral>(e->IgnoreParenImpCasts())) return true; // what if if("hi")?
-	if (llvm::dyn_cast_or_null<IntegerLiteral>(e->IgnoreParenImpCasts())) return true; // what if if(0)?
-	if (llvm::dyn_cast_or_null<FloatingLiteral>(e->IgnoreParenImpCasts())) return true; // what if if(0.0)?
+	if (llvm::dyn_cast_or_null<CXXBoolLiteralExpr>(e->IgnoreParenCasts())) return true; // what if if(true)?
+	if (llvm::dyn_cast_or_null<CharacterLiteral>(e->IgnoreParenCasts())) return true; // what if if('a')?
+	if (llvm::dyn_cast_or_null<StringLiteral>(e->IgnoreParenCasts())) return true; // what if if("hi")?
+	if (llvm::dyn_cast_or_null<IntegerLiteral>(e->IgnoreParenCasts())) return true; // what if if(0)?
+	if (llvm::dyn_cast_or_null<FloatingLiteral>(e->IgnoreParenCasts())) return true; // what if if(0.0)?
 	return false;
 }
 
 static bool isEssentiallyDeclRefExpr(const Expr *e) {
 	if (!e) return false;
-    e = e->IgnoreParenImpCasts();
-    if (!e) return false;
+	e = e->IgnoreParenCasts();
+	if (!e) return false;
 	auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e); // what if if(!x)?
 	if (u){
 		return isEssentiallyDeclRefExpr(u->getSubExpr()); // what if if(!!!!!!!!x)
@@ -335,11 +335,11 @@ const std::set<StringRef> NonLinears = {
 		"atan2l",
 	};
 
-int countDegree(const Expr *expr){
+int CountBranchesCheck::countDegree(const Expr *expr){
 	if (!expr) return 0;
 	if(isLiteral(expr) || isEssentiallyDeclRefExpr(expr)) return 1;
 	int deg = 1;
-	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenImpCasts());
+	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenCasts());
 	if (binaryOp) {
 		// multiplicative operators defined by clang:
 		// static bool isMultiplicativeOp(Opcode Opc) {
@@ -361,19 +361,19 @@ int countDegree(const Expr *expr){
 				if(isLiteral(binaryOp->getLHS()) || isLiteral(binaryOp->getRHS()))
 					break;
 				deg = 1 + std::max(
-					countDegree(binaryOp->getLHS()->IgnoreParenImpCasts()),
-					countDegree(binaryOp->getRHS()->IgnoreParenImpCasts())
+					countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
+					countDegree(binaryOp->getRHS()->IgnoreParenCasts())
 				);
 				break;
 			default:
 				deg = std::max(
-					countDegree(binaryOp->getLHS()->IgnoreParenImpCasts()),
-					countDegree(binaryOp->getRHS()->IgnoreParenImpCasts())
+					countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
+					countDegree(binaryOp->getRHS()->IgnoreParenCasts())
 				);
 				break;
 		}
 	}
-	const auto *callOp = llvm::dyn_cast_or_null<CallExpr>(expr->IgnoreParenImpCasts());
+	const auto *callOp = llvm::dyn_cast_or_null<CallExpr>(expr->IgnoreParenCasts());
 	if(callOp){
 		const FunctionDecl *f = callOp->getDirectCallee();
 		if(NonLinears.find(f->getCanonicalDecl()->getName()) != NonLinears.end()){ // miért kell a canonical?
@@ -389,130 +389,162 @@ int countDegree(const Expr *expr){
 	return deg;
 }
 
-int countFunctions(const Expr *expr){
+int CountBranchesCheck::countFunctions(const Expr *expr){
 	if (!expr) return 0;
-	const auto *callExpr = llvm::dyn_cast_or_null<CallExpr>(expr->IgnoreParenImpCasts());
+	const auto *callExpr = llvm::dyn_cast_or_null<CallExpr>(expr->IgnoreParenCasts());
 	if (callExpr) {
 		return 1;
 	}
 	int fn = 0;
-	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenImpCasts());
-	const auto *unaryOp = llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenImpCasts());
-	const auto *conditionalOp = llvm::dyn_cast_or_null<ConditionalOperator>(expr->IgnoreParenImpCasts());
+	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenCasts());
+	const auto *unaryOp = llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenCasts());
+	const auto *conditionalOp = llvm::dyn_cast_or_null<ConditionalOperator>(expr->IgnoreParenCasts());
 	if (binaryOp || unaryOp || conditionalOp) {
 		std::stack<const Expr*> stack;
 		if(binaryOp){
-			stack.push(binaryOp->getLHS()->IgnoreParenImpCasts());
-			stack.push(binaryOp->getRHS()->IgnoreParenImpCasts());
+			stack.push(binaryOp->getLHS()->IgnoreParenCasts());
+			stack.push(binaryOp->getRHS()->IgnoreParenCasts());
 		}
 		if(unaryOp){
-			stack.push(unaryOp->getSubExpr()->IgnoreParenImpCasts());
+			stack.push(unaryOp->getSubExpr()->IgnoreParenCasts());
 		}
 		if(conditionalOp){
-			stack.push(conditionalOp->getCond()->IgnoreParenImpCasts());
-			stack.push(conditionalOp->getTrueExpr()->IgnoreParenImpCasts());
-			stack.push(conditionalOp->getFalseExpr()->IgnoreParenImpCasts());
+			stack.push(conditionalOp->getCond()->IgnoreParenCasts());
+			stack.push(conditionalOp->getTrueExpr()->IgnoreParenCasts());
+			stack.push(conditionalOp->getFalseExpr()->IgnoreParenCasts());
 		}
 		while (!stack.empty()) {
 			const Expr *e = stack.top();
 			stack.pop();
 			// if its a function call, count it
-			const auto *call = llvm::dyn_cast_or_null<CallExpr>(e->IgnoreParenImpCasts());
+			const auto *call = llvm::dyn_cast_or_null<CallExpr>(e->IgnoreParenCasts());
 			if (call) {
 				fn++;
 				unsigned int argCount = call->getNumArgs();
 				const Expr* const *args = call->getArgs();
 				for (unsigned int i = 0; i < argCount; i += 1) {
-					stack.push(args[i]->IgnoreParenImpCasts());
+					stack.push(args[i]->IgnoreParenCasts());
 				}
 			}
 			// if its an unary operator, push its child
-			const auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParenImpCasts());
+			const auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParenCasts());
 			if (u) {
-				stack.push(u->getSubExpr()->IgnoreParenImpCasts());
+				stack.push(u->getSubExpr()->IgnoreParenCasts());
 			}
 			// if its a binary operator, push its children
-			const auto *b = llvm::dyn_cast_or_null<BinaryOperator>(e->IgnoreParenImpCasts());
+			const auto *b = llvm::dyn_cast_or_null<BinaryOperator>(e->IgnoreParenCasts());
 			if (b) {
-				stack.push(b->getLHS()->IgnoreParenImpCasts());
-				stack.push(b->getRHS()->IgnoreParenImpCasts());
+				stack.push(b->getLHS()->IgnoreParenCasts());
+				stack.push(b->getRHS()->IgnoreParenCasts());
 			}
 			// walk into parentheses
-			const auto *parenExpr = llvm::dyn_cast_or_null<ParenExpr>(e->IgnoreParenImpCasts());
+			const auto *parenExpr = llvm::dyn_cast_or_null<ParenExpr>(e->IgnoreParenCasts());
 			if (parenExpr) {
-				stack.push(parenExpr->getSubExpr()->IgnoreParenImpCasts());
+				stack.push(parenExpr->getSubExpr()->IgnoreParenCasts());
 			}
-			const auto *condOp = llvm::dyn_cast_or_null<ConditionalOperator>(e->IgnoreParenImpCasts());
+			const auto *condOp = llvm::dyn_cast_or_null<ConditionalOperator>(e->IgnoreParenCasts());
 			if (condOp) {
-				stack.push(condOp->getCond()->IgnoreParenImpCasts());
-				stack.push(condOp->getTrueExpr()->IgnoreParenImpCasts());
-				stack.push(condOp->getFalseExpr()->IgnoreParenImpCasts());
+				stack.push(condOp->getCond()->IgnoreParenCasts());
+				stack.push(condOp->getTrueExpr()->IgnoreParenCasts());
+				stack.push(condOp->getFalseExpr()->IgnoreParenCasts());
 			}
 		}
 	}
 	return fn;
 }
 
-int countVariables(const Expr *expr){
+int CountBranchesCheck::countVariables(const Expr *expr){
 	if (!expr) return 0;
 	if (isEssentiallyDeclRefExpr(expr)) {
 		return 1;
 	}
-	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenImpCasts());
-	const auto *conditionalOp = llvm::dyn_cast_or_null<ConditionalOperator>(expr->IgnoreParenImpCasts());
-	const auto *unaryOp = llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenImpCasts());
+
+
+	const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenCasts());
+	const auto *conditionalOp = llvm::dyn_cast_or_null<ConditionalOperator>(expr->IgnoreParenCasts());
+	const auto *unaryOp = llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenCasts());
 	if (binaryOp || conditionalOp || unaryOp) {
 		llvm::SmallSet<std::string, 8> names; // who the hell uses more than 8 vars in one condition
 		std::stack<const Expr*> stack;
 		if(binaryOp){
-			stack.push(binaryOp->getLHS()->IgnoreParenImpCasts());
-			stack.push(binaryOp->getRHS()->IgnoreParenImpCasts());
+			stack.push(binaryOp->getLHS()->IgnoreParenCasts());
+			stack.push(binaryOp->getRHS()->IgnoreParenCasts());
 		}
 		if(conditionalOp){
-			stack.push(conditionalOp->getCond()->IgnoreParenImpCasts());
-			stack.push(conditionalOp->getTrueExpr()->IgnoreParenImpCasts());
-			stack.push(conditionalOp->getFalseExpr()->IgnoreParenImpCasts());
+			stack.push(conditionalOp->getCond()->IgnoreParenCasts());
+			stack.push(conditionalOp->getTrueExpr()->IgnoreParenCasts());
+			stack.push(conditionalOp->getFalseExpr()->IgnoreParenCasts());
 		}
 		if(unaryOp){
-			stack.push(unaryOp->getSubExpr()->IgnoreParenImpCasts());
+			stack.push(unaryOp->getSubExpr()->IgnoreParenCasts());
 		}
 		while (!stack.empty()) {
 			const Expr *e = stack.top();
 			stack.pop();
 			// if its a variable, count it
-			const DeclRefExpr* var = llvm::dyn_cast_or_null<DeclRefExpr>(e->IgnoreParenImpCasts());
-			if (var != nullptr && var->getDecl() != nullptr && !names.contains(var->getDecl()->getNameAsString())) {
+			const DeclRefExpr* var = llvm::dyn_cast_or_null<DeclRefExpr>(e->IgnoreParenCasts());
+			if (var != nullptr && var->getDecl() != nullptr) {
 				names.insert(var->getDecl()->getNameAsString());
 			}
+			const MemberExpr* member = llvm::dyn_cast_or_null<MemberExpr>(e->IgnoreParenCasts());
+			if (member != nullptr && member->getMemberDecl() != nullptr) {
+				std::string name;
+				const Expr* base = member->getBase()->IgnoreParenCasts();
+				if(base){
+					const DeclRefExpr* baseVar = llvm::dyn_cast_or_null<DeclRefExpr>(base->IgnoreParenImpCasts());
+					if (baseVar != nullptr && baseVar->getDecl() != nullptr) {
+						name += baseVar->getDecl()->getNameAsString() + ".";
+					}
+					const ArraySubscriptExpr* arr = llvm::dyn_cast_or_null<ArraySubscriptExpr>(base->IgnoreParenImpCasts());
+					if(arr){
+						const DeclRefExpr* idxVar = llvm::dyn_cast_or_null<DeclRefExpr>(arr->getBase()->IgnoreParenImpCasts());
+						if (idxVar != nullptr && idxVar->getDecl() != nullptr) {
+							name += idxVar->getDecl()->getNameAsString();
+						}
+					}
+				}
+				name += member->getMemberDecl()->getNameAsString();
+				names.insert(name); // TODO: concat with arr idx!!!
+			}
+			const ArraySubscriptExpr* arr = llvm::dyn_cast_or_null<ArraySubscriptExpr>(e->IgnoreParenCasts());
+			if (arr != nullptr) {
+				const Expr* base = arr->getBase()->IgnoreParenCasts();
+				if(base){
+					const DeclRefExpr* baseVar = llvm::dyn_cast_or_null<DeclRefExpr>(base->IgnoreParenCasts());
+					if (baseVar != nullptr && baseVar->getDecl() != nullptr) {
+						names.insert(baseVar->getDecl()->getNameAsString()); // This will be the name of the array (maybe concat with idx?)
+					}
+				}
+			}
 			// if its an unary operator, push its child
-			const auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParenImpCasts());
+			const auto *u = llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParenCasts());
 			if (u) {
-				stack.push(u->getSubExpr()->IgnoreParenImpCasts());
+				stack.push(u->getSubExpr()->IgnoreParenCasts());
 			}
 			// if its a binary operator, push its children
-			const auto *b = llvm::dyn_cast_or_null<BinaryOperator>(e->IgnoreParenImpCasts());
+			const auto *b = llvm::dyn_cast_or_null<BinaryOperator>(e->IgnoreParenCasts());
 			if (b) {
-				stack.push(b->getLHS()->IgnoreParenImpCasts());
-				stack.push(b->getRHS()->IgnoreParenImpCasts());
+				stack.push(b->getLHS()->IgnoreParenCasts());
+				stack.push(b->getRHS()->IgnoreParenCasts());
 			}
 			// walk into parentheses
-			const auto *parenExpr = llvm::dyn_cast_or_null<ParenExpr>(e->IgnoreParenImpCasts());
+			const auto *parenExpr = llvm::dyn_cast_or_null<ParenExpr>(e->IgnoreParenCasts());
 			if (parenExpr) {
-				stack.push(parenExpr->getSubExpr()->IgnoreImpCasts());
+				stack.push(parenExpr->getSubExpr()->IgnoreParenCasts());
 			}
-			const auto *call = llvm::dyn_cast_or_null<CallExpr>(e->IgnoreParenImpCasts());
+			const auto *call = llvm::dyn_cast_or_null<CallExpr>(e->IgnoreParenCasts());
 			if (call) {
 				unsigned int argCount = call->getNumArgs();
 				const Expr* const *args = call->getArgs();
 				for (unsigned int i = 0; i < argCount; i += 1) {
-					stack.push(args[i]->IgnoreParenImpCasts());
+					stack.push(args[i]->IgnoreParenCasts());
 				}
 			}
-			const auto *condOp = llvm::dyn_cast_or_null<ConditionalOperator>(e->IgnoreParenImpCasts());
+			const auto *condOp = llvm::dyn_cast_or_null<ConditionalOperator>(e->IgnoreParenCasts());
 			if (condOp) {
-				stack.push(condOp->getCond()->IgnoreParenImpCasts());
-				stack.push(condOp->getTrueExpr()->IgnoreParenImpCasts());
-				stack.push(condOp->getFalseExpr()->IgnoreParenImpCasts());
+				stack.push(condOp->getCond()->IgnoreParenCasts());
+				stack.push(condOp->getTrueExpr()->IgnoreParenCasts());
+				stack.push(condOp->getFalseExpr()->IgnoreParenCasts());
 			}
 		}
 		return names.size();

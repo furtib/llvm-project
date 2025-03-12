@@ -28,6 +28,9 @@ public:
 private:
   //template <typename T>
   void checkLinearity(const Expr *stmt);
+  int countVariables(const Expr *expr);
+  int countFunctions(const Expr *expr);
+  int countDegree(const Expr *expr);
   int Total;
   int Linear;
 };
