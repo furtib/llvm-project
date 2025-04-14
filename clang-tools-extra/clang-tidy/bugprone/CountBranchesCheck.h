@@ -10,32 +10,41 @@
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_COUNTBRANCHESCHECK_H
 
 #include "../ClangTidyCheck.h"
+#include <vector>
 
 namespace clang {
 namespace tidy {
-namespace bugprone {
+    namespace bugprone {
 
-/// FIXME: Write a short description.
-///
-/// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/bugprone-count-branches.html
-class CountBranchesCheck : public ClangTidyCheck {
-public:
-  CountBranchesCheck(StringRef Name, ClangTidyContext *Context)
-      : ClangTidyCheck(Name, Context), Total(0), Linear(0) {}
-  void registerMatchers(ast_matchers::MatchFinder *Finder) override;
-  void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
-private:
-  //template <typename T>
-  void checkLinearity(const Expr *stmt);
-  int countVariables(const Expr *expr);
-  int countFunctions(const Expr *expr);
-  int countDegree(const Expr *expr);
-  int Total;
-  int Linear;
-};
+        /// FIXME: Write a short description.
+        ///
+        /// For the user-facing documentation see:
+        /// http://clang.llvm.org/extra/clang-tidy/checks/bugprone-count-branches.html
+        class CountBranchesCheck : public ClangTidyCheck {
+        public:
+            CountBranchesCheck(StringRef Name, ClangTidyContext* Context)
+                : ClangTidyCheck(Name, Context)
+                , Total(0)
+                , Linear(0)
+            {
+            }
+            void registerMatchers(ast_matchers::MatchFinder* Finder) override;
+            void check(const ast_matchers::MatchFinder::MatchResult& Result) override;
 
-} // namespace bugprone
+        private:
+            // template <typename T>
+            void checkLinearity(const Expr* stmt);
+            std::array<int, 4> countVarFuncAndOr(const Expr* expr);
+            int countDegree(const Expr* expr);
+            std::pair<int, int> countAndOr(const Expr* expr);
+            std::string arrName;
+            clang::SourceManager* LO;
+            clang::SourceManager* SM;
+            int Total;
+            int Linear;
+        };
+
+    } // namespace bugprone
 } // namespace tidy
 } // namespace clang
 
