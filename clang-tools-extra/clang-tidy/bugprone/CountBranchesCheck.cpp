@@ -169,6 +169,10 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
   if (isLiteral(expr) || isEssentiallyDeclRefExpr(expr))
     return 1;
   int deg = 1;
+  const auto *u =
+      llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenCasts());
+  if (u)
+    deg = countDegree(u->getSubExpr()->IgnoreParenCasts());
   const auto *binaryOp =
       llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenCasts());
   if (binaryOp) {
@@ -200,6 +204,7 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
       break;
     }
   }
+  /*
   const auto *callOp =
       llvm::dyn_cast_or_null<CallExpr>(expr->IgnoreParenCasts());
   if (callOp) {
@@ -215,6 +220,7 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
       deg = std::max(deg, countDegree(args[i]));
     }
   }
+  */
   return deg;
 }
 
