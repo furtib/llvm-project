@@ -166,8 +166,12 @@ const std::set<StringRef> NonLinears = {
 int CountBranchesCheck::countDegree(const Expr *expr) {
   if (!expr)
     return 0;
-  if (isLiteral(expr) || isEssentiallyDeclRefExpr(expr))
+  if (isLiteral(expr))
+    return 0;
+  if (isEssentiallyDeclRefExpr(expr))
     return 1;
+  if (llvm::isa<CallExpr>(expr))
+    return 1; // TODO: check if its a math function call
   int deg = 1;
   const auto *u =
       llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenCasts());
