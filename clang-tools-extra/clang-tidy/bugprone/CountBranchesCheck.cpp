@@ -332,7 +332,8 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
     const auto *condOp =
         llvm::dyn_cast_or_null<ConditionalOperator>(e->IgnoreParenCasts());
     if (condOp) {
-      stack.push(condOp->getCond()->IgnoreParenCasts());
+      // stack.push(condOp->getCond()->IgnoreParenCasts()); // The condition
+      // will be checked separately
       stack.push(condOp->getTrueExpr()->IgnoreParenCasts());
       stack.push(condOp->getFalseExpr()->IgnoreParenCasts());
     }
