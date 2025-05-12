@@ -239,7 +239,7 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
   llvm::SmallSet<std::string, 8>
       names; // who the hell uses more than 8 vars in one condition
   std::stack<const Expr *> stack;
-  stack.push(expr->IgnoreParenCasts());
+  stack.push(unwrapOpaqueValueExpr(expr->IgnoreParenCasts()));
   while (!stack.empty()) {
     const Expr *e = stack.top();
     stack.pop();
