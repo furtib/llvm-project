@@ -163,6 +163,11 @@ const std::set<StringRef> NonLinears = {
     "atan2l",
 };
 
+int mymax(int lhs, int rhs){
+  if(lhs == -1 || rhs == -1) return -1;
+  return std::max(lhs, rhs);
+}
+
 int CountBranchesCheck::countDegree(const Expr *expr) {
   if (!expr)
     return 0;
@@ -170,8 +175,9 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     return 0;
   if (isEssentiallyDeclRefExpr(expr))
     return 1;
+  // We don't know anything about the function calls, we assume they are non linear
   if (llvm::isa<CallExpr>(expr))
-    return 1; // TODO: check if its a math function call
+    return -1;
   int deg = 1;
   const auto *u =
       llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenCasts());
@@ -199,11 +205,11 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     case BO_MulAssign:
       if (isLiteral(binaryOp->getLHS()) || isLiteral(binaryOp->getRHS()))
         break;
-      deg = 1 + std::max(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
+      deg = 1 + mymax(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
                          countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
       break;
     default:
-      deg = std::max(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
+      deg = mymax(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
                      countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
       break;
     }
