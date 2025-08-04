@@ -249,6 +249,9 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
   while (!stack.empty()) {
     const Expr *e = stack.top();
     stack.pop();
+    if(!e){ // potencial Segfault/Aborted
+      continue;
+    }
     // if its a variable, count it
     const DeclRefExpr *var =
         llvm::dyn_cast_or_null<DeclRefExpr>(e->IgnoreParenCasts());
@@ -259,7 +262,7 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
         llvm::dyn_cast_or_null<MemberExpr>(e->IgnoreParenCasts());
     if (member != nullptr && member->getMemberDecl() != nullptr) {
       std::string name;
-      const Expr *base = member->getBase()->IgnoreParenCasts();
+      const Expr *base = member->getBase()->IgnoreParenCasts(); // TODO: potencial Aborted (core dumped)
       if (base) {
         // arrName +=
         // Lexer::getSourceText(CharSourceRange::getTokenRange(base->getSourceRange()),
