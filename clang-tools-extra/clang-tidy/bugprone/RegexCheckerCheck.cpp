@@ -78,32 +78,13 @@ void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
     return;
 
   // INIT PART
-  // getCanonicalDecl solves decls like extern std::string s; to their external definition
+  // getCanonicalDecl solves decls like extern std::string s; to their external definition (is this true tho?)
   const Expr* init = varDecl->getCanonicalDecl()->getInit();
   if(init){
       const Expr* report = InitRoute(init);
-      if(report){
+      if(report)
         diag(report->getBeginLoc(), "Invalid regex!") << report->getSourceRange();
-      } 
   }
-
-  // TODO: exploregetEvaluatedValue route
-  /*
-  const APValue* maybeStr = varDecl->getEvaluatedValue();
-  if(maybeStr && maybeStr->hasValue()){
-    diag(varDecl->getBeginLoc(), "can compute!") << varDecl->getSourceRange();
-    if(maybeStr->isLValue()){
-      const clang::APValue::LValueBase t1 = maybeStr->getLValueBase();
-      if(t1){
-        diag(varDecl->getBeginLoc(), "can compute!" + t1.getType().getAsString()) << varDecl->getSourceRange();
-        /*const StringLiteral *s2 = llvm::dyn_cast_or_null<StringLiteral>(t1);
-        if(s2){
-        }* /
-      }
-    }
-  }
-  */
-  //diag(expr->getBeginLoc(), "Hello world!") << expr->getSourceRange();
 }
 
 } // namespace clang::tidy::bugprone
