@@ -74,7 +74,7 @@ void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
   if(!baseDecl)
     return;
   const VarDecl* varDecl = llvm::dyn_cast_or_null<VarDecl>(baseDecl);
-  if(!varDecl)
+  if(!varDecl || !varDecl->isConstexpr())
     return;
 
   // INIT PART
