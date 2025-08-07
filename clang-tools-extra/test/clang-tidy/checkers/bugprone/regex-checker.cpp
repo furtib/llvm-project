@@ -1,7 +1,8 @@
+//#include <regex>
 // RUN: %check_clang_tidy %s bugprone-regex-checker %t
 
 // FIXME: Add something that triggers the check here.
-void f();
+std::regex incorrect("[0-9]++");
 // CHECK-MESSAGES: :[[@LINE-1]]:6: warning: function 'f' is insufficiently awesome [bugprone-regex-checker]
 
 // FIXME: Verify the applied fix.
@@ -11,4 +12,4 @@ void f();
 // CHECK-FIXES: {{^}}void awesome_f();{{$}}
 
 // FIXME: Add something that doesn't trigger the check here.
-void awesome_f2();
+std::regex correct("[0-9]+");
