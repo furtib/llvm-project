@@ -17,29 +17,93 @@ void RegexCheckerCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(cxxConstructExpr().bind("x"), this);
 }
 
+bool isValidRegex(std::string&& s){
+  llvm::Regex regex(s);
+  return regex.isValid();
+}
+
+const Expr* InitRoute(const Expr* init){
+  // init is never null
+  const StringLiteral* str =
+    llvm::dyn_cast_or_null<StringLiteral>(init->IgnoreImpCasts());
+  if(str){
+    if (!isValidRegex(str->getString().str()))
+      return str;
+  }
+  const CXXConstructExpr* string_constr =
+    llvm::dyn_cast_or_null<CXXConstructExpr>(init->IgnoreImpCasts());
+  if(!string_constr || string_constr->getNumArgs() < 1)
+    return nullptr;
+  const Expr* arg = string_constr->getArg(0);
+  if(!arg)
+    return nullptr;
+  if(!arg->IgnoreImpCasts())
+    return nullptr;
+  str = llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
+  if(str){
+    if (!isValidRegex(str->getString().str()))
+      return str;
+  }
+  return nullptr;
+}
+
 void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
   const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
   if(!expr)
-  return;
+    return;
   clang::QualType type = expr->getType();
-  if(type->getCanonicalTypeInternal().getAsString().find("std::basic_regex") != std::string::npos){
-    const CXXConstructExpr* constr = llvm::dyn_cast_or_null<CXXConstructExpr>(expr);
-    if(!constr)
-      return;
-    std::string ans = "";
-    for(uint i = 0; i < constr->getNumArgs(); ++i){
-      const Expr *arg = constr->getArg(i);
-      if(!arg)
-        continue;
-      const StringLiteral* str = llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
-      if(str){
-        llvm::Regex regex(str->getString().str());
-        if (!regex.isValid())
-          diag(str->getBeginLoc(), "Invalid regex!") << str->getSourceRange();
-        ans += std::to_string(i) + str->getString().str() + ";";
+  if(type->getCanonicalTypeInternal().getAsString().find("std::basic_regex") == std::string::npos)
+    return;
+  const CXXConstructExpr* constr = llvm::dyn_cast_or_null<CXXConstructExpr>(expr);
+  if(!constr)
+    return;
+  const Expr *arg = constr->getArg(0);
+  if(!arg)
+    return;
+  // StringLiteral as constructor argument
+  const StringLiteral* str = llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
+  if(str){
+    if (!isValidRegex(str->getString().str()))
+      diag(str->getBeginLoc(), "Invalid regex!") << str->getSourceRange();
+  }
+  // Variable as constructor arg
+  const DeclRefExpr *var = llvm::dyn_cast_or_null<DeclRefExpr>(arg->IgnoreImpCasts());
+  if(!var)
+    return;
+  const ValueDecl* baseDecl = var->getDecl();
+  if(!baseDecl)
+    return;
+  const VarDecl* varDecl = llvm::dyn_cast_or_null<VarDecl>(baseDecl);
+  if(!varDecl)
+    return;
+
+  // INIT PART
+  // getCanonicalDecl solves decls like extern std::string s; to their external definition
+  const Expr* init = varDecl->getCanonicalDecl()->getInit();
+  if(init){
+      const Expr* report = InitRoute(init);
+      if(report){
+        diag(report->getBeginLoc(), "Invalid regex!") << report->getSourceRange();
+      } 
+  }
+
+  // TODO: exploregetEvaluatedValue route
+  /*
+  const APValue* maybeStr = varDecl->getEvaluatedValue();
+  if(maybeStr && maybeStr->hasValue()){
+    diag(varDecl->getBeginLoc(), "can compute!") << varDecl->getSourceRange();
+    if(maybeStr->isLValue()){
+      const clang::APValue::LValueBase t1 = maybeStr->getLValueBase();
+      if(t1){
+        diag(varDecl->getBeginLoc(), "can compute!" + t1.getType().getAsString()) << varDecl->getSourceRange();
+        /*const StringLiteral *s2 = llvm::dyn_cast_or_null<StringLiteral>(t1);
+        if(s2){
+        }* /
       }
     }
   }
+  */
+  //diag(expr->getBeginLoc(), "Hello world!") << expr->getSourceRange();
 }
 
 } // namespace clang::tidy::bugprone
