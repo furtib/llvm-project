@@ -112,6 +112,11 @@ Improvements to clang-tidy
 New checks
 ^^^^^^^^^^
 
+- New :doc:`bugprone-regex-checker
+  <clang-tidy/checks/bugprone/regex-checker>` check.
+
+  FIXME: add release notes.
+
 - New :doc:`bugprone-invalid-enum-default-initialization
   <clang-tidy/checks/bugprone/invalid-enum-default-initialization>` check.
 

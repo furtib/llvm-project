@@ -60,6 +60,7 @@
 #include "PointerArithmeticOnPolymorphicObjectCheck.h"
 #include "PosixReturnCheck.h"
 #include "RedundantBranchConditionCheck.h"
+#include "RegexCheckerCheck.h"
 #include "ReservedIdentifierCheck.h"
 #include "ReturnConstRefFromParameterCheck.h"
 #include "SharedPtrArrayMismatchCheck.h"
@@ -157,6 +158,8 @@ public:
         "bugprone-unintended-char-ostream-output");
     CheckFactories.registerCheck<ReturnConstRefFromParameterCheck>(
         "bugprone-return-const-ref-from-parameter");
+    CheckFactories.registerCheck<RegexCheckerCheck>(
+        "bugprone-regex-checker");
     CheckFactories.registerCheck<SwitchMissingDefaultCaseCheck>(
         "bugprone-switch-missing-default-case");
     CheckFactories.registerCheck<IncDecInConditionsCheck>(

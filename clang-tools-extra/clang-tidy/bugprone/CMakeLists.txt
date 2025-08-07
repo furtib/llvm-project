@@ -34,6 +34,7 @@ add_clang_library(clangTidyBugproneModule STATIC
   UnintendedCharOstreamOutputCheck.cpp
   ReturnConstRefFromParameterCheck.cpp
   SuspiciousStringviewDataUsageCheck.cpp
+  RegexCheckerCheck.cpp
   SwitchMissingDefaultCaseCheck.cpp
   IncDecInConditionsCheck.cpp
   IncorrectEnableIfCheck.cpp
