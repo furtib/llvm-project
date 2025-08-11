@@ -52,22 +52,28 @@ void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
   if(!expr)
     return;
   clang::QualType type = expr->getType();
-  if(type->getCanonicalTypeInternal().getAsString().find("std::basic_regex") == std::string::npos)
+  if(type->getCanonicalTypeInternal().getAsString().find("std::basic_regex") ==
+    std::string::npos &&
+    type->getCanonicalTypeInternal().getAsString().find("boost::basic_regex")
+    == std::string::npos)
     return;
-  const CXXConstructExpr* constr = llvm::dyn_cast_or_null<CXXConstructExpr>(expr);
+  const CXXConstructExpr* constr =
+    llvm::dyn_cast_or_null<CXXConstructExpr>(expr);
   if(!constr)
     return;
   const Expr *arg = constr->getArg(0);
   if(!arg)
     return;
   // StringLiteral as constructor argument
-  const StringLiteral* str = llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
+  const StringLiteral* str =
+    llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
   if(str){
     if (!isValidRegex(str->getString().str()))
       diag(str->getBeginLoc(), "Invalid regex!") << str->getSourceRange();
   }
   // Variable as constructor arg
-  const DeclRefExpr *var = llvm::dyn_cast_or_null<DeclRefExpr>(arg->IgnoreImpCasts());
+  const DeclRefExpr *var =
+    llvm::dyn_cast_or_null<DeclRefExpr>(arg->IgnoreImpCasts());
   if(!var)
     return;
   const ValueDecl* baseDecl = var->getDecl();
@@ -78,12 +84,14 @@ void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
     return;
 
   // INIT PART
-  // getCanonicalDecl solves decls like extern std::string s; to their external definition (is this true tho?)
+  // getCanonicalDecl solves decls like extern std::string s;
+  // to their external definition (is this true tho?)
   const Expr* init = varDecl->getCanonicalDecl()->getInit();
   if(init){
       const Expr* report = InitRoute(init);
       if(report)
-        diag(report->getBeginLoc(), "Invalid regex!") << report->getSourceRange();
+        diag(report->getBeginLoc(), "Invalid regex!")
+          << report->getSourceRange();
   }
 }
 
