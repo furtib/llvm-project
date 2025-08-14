@@ -112,8 +112,8 @@ Improvements to clang-tidy
 New checks
 ^^^^^^^^^^
 
-- New :doc:`bugprone-regex-checker
-  <clang-tidy/checks/bugprone/regex-checker>` check.
+- New :doc:`bugprone-regex
+  <clang-tidy/checks/bugprone/regex>` check.
 
   FIXME: add release notes.
 

@@ -1,4 +1,4 @@
-//===--- RegexCheckerCheck.cpp - clang-tidy -------------------------------===//
+//===--- RegexCheck.cpp - clang-tidy -------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,14 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "RegexCheckerCheck.h"
+#include "RegexCheck.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 
 using namespace clang::ast_matchers;
 
 namespace clang::tidy::bugprone {
 
-void RegexCheckerCheck::registerMatchers(MatchFinder *Finder) {
+void RegexCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(cxxConstructExpr().bind("x"), this);
 }
 
@@ -47,7 +47,7 @@ const Expr* InitRoute(const Expr* init){
   return nullptr;
 }
 
-void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
+void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
   if(!expr)
     return;
@@ -70,6 +70,8 @@ void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
   if(str){
     if (!isValidRegex(str->getString().str()))
       diag(str->getBeginLoc(), "Invalid regex!") << str->getSourceRange();
+    else
+      diag(str->getBeginLoc(), "Valid regex!") << str->getSourceRange();
   }
   // Variable as constructor arg
   const DeclRefExpr *var =
@@ -92,6 +94,8 @@ void RegexCheckerCheck::check(const MatchFinder::MatchResult &Result) {
       if(report)
         diag(report->getBeginLoc(), "Invalid regex!")
           << report->getSourceRange();
+      else
+        diag(init->getBeginLoc(), "Valid regex!") << init->getSourceRange();
   }
 }
 
