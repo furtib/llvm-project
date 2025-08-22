@@ -115,7 +115,7 @@ New checks
 - New :doc:`bugprone-regex
   <clang-tidy/checks/bugprone/regex>` check.
 
-  FIXME: add release notes.
+  Detects incorrect regexes in constant stings.
 
 - New :doc:`bugprone-invalid-enum-default-initialization
   <clang-tidy/checks/bugprone/invalid-enum-default-initialization>` check.
