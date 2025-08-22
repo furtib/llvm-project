@@ -22,11 +22,11 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                         hasName("boost::basic_regex")))))),
           hasAnyArgument(ignoringImplicit(anyOf(
               stringLiteral().bind("stringLiteral"),
-              declRefExpr(
+              declRefExpr(to(varDecl(
                   hasType(qualType(
                       isConstQualified(),
                       hasUnqualifiedDesugaredType(recordType(hasDeclaration(
-                          cxxRecordDecl(hasName("::std::basic_string"))))))))
+                          cxxRecordDecl(hasName("::std::basic_string")))))))).bind("whatami")))
                   .bind("stringVar"),
               declRefExpr(hasType(pointerType(
                               pointee(builtinType(), isConstQualified()))))
@@ -68,51 +68,33 @@ const Expr *InitRoute(const Expr *init) {
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
   if (expr)
-    diag(expr->getBeginLoc(), "Invalid!") << expr->getSourceRange();
-  const Expr *stringlit = Result.Nodes.getNodeAs<Expr>("stringLiteral");
-  if (stringlit)
-    diag(stringlit->getBeginLoc(), "StringLit!") << stringlit->getSourceRange();
-  const Expr *stringvar = Result.Nodes.getNodeAs<Expr>("stringVar");
+    diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
+  const StringLiteral *stringlit =
+      Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
+  if (stringlit && !isValidRegex(stringlit->getString().str())) {
+    diag(stringlit->getBeginLoc(), "Invalid!") << stringlit->getSourceRange();
+    return;
+  }
+  const DeclRefExpr *stringvar =
+      Result.Nodes.getNodeAs<DeclRefExpr>("stringVar");
   if (stringvar)
     diag(stringvar->getBeginLoc(), "StringVar!") << stringvar->getSourceRange();
-  const Expr *charptr = Result.Nodes.getNodeAs<Expr>("charptr");
+  const DeclRefExpr *charptr = Result.Nodes.getNodeAs<DeclRefExpr>("charptr");
   if (charptr)
     diag(charptr->getBeginLoc(), "Charptr!") << charptr->getSourceRange();
-  if (!expr)
-    return;
-  clang::QualType type = expr->getType();
-  return;
-  if (type->getCanonicalTypeInternal().getAsString().find("std::basic_regex") ==
-          std::string::npos &&
-      type->getCanonicalTypeInternal().getAsString().find(
-          "boost::basic_regex") == std::string::npos)
-    return;
-  const CXXConstructExpr *constr =
-      llvm::dyn_cast_or_null<CXXConstructExpr>(expr);
-  if (!constr)
-    return;
-  const Expr *arg = constr->getArg(0);
-  if (!arg)
-    return;
-  // StringLiteral as constructor argument
-  const StringLiteral *str =
-      llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
-  if (str) {
-    if (!isValidRegex(str->getString().str()))
-      diag(str->getBeginLoc(), "Invalid!") << str->getSourceRange();
-    else
-      diag(str->getBeginLoc(), "Valid!") << str->getSourceRange();
-  }
-  // Variable as constructor arg
-  const DeclRefExpr *var =
-      llvm::dyn_cast_or_null<DeclRefExpr>(arg->IgnoreImpCasts());
-  if (!var)
-    return;
-  const ValueDecl *baseDecl = var->getDecl();
+  const Expr *unkown = Result.Nodes.getNodeAs<Expr>("whatami");
+  if (unkown)
+    diag(unkown->getBeginLoc(), "unkown! " + unkown->getType()->getCanonicalTypeInternal().getAsString()) << unkown->getSourceRange();
+  const ValueDecl *baseDecl = nullptr;
+  if (stringvar)
+    baseDecl = stringvar->getDecl();
+  else if (charptr)
+    baseDecl = charptr->getDecl();
   if (!baseDecl)
     return;
-  const VarDecl *varDecl = llvm::dyn_cast_or_null<VarDecl>(baseDecl);
-  if (!varDecl || !varDecl->isConstexpr())
+    
+    const VarDecl *varDecl = llvm::dyn_cast_or_null<VarDecl>(baseDecl);
+    if (!varDecl)
     return;
 
   // INIT PART
@@ -126,6 +108,7 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
     else
       diag(init->getBeginLoc(), "Valid!") << init->getSourceRange();
   }
+  return;
 }
 
 } // namespace clang::tidy::bugprone
