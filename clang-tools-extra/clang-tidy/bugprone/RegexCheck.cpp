@@ -26,7 +26,7 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                   hasType(qualType(
                       isConstQualified(),
                       hasUnqualifiedDesugaredType(recordType(hasDeclaration(
-                          cxxRecordDecl(hasName("::std::basic_string")))))))).bind("whatami")))
+                          cxxRecordDecl(hasName("::std::basic_string"))))))))))
                   .bind("stringVar"),
               declRefExpr(hasType(pointerType(
                               pointee(builtinType(), isConstQualified()))))
