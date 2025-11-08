@@ -40,14 +40,13 @@ bool isValidRegex(std::string &&s) {
   return regex.isValid();
 }
 
-const Expr *InitRoute(const Expr *init) {
+// This function tries to retrive the string literal from str and const char* variables 
+const StringLiteral *getStrFromInitialization(const Expr *init) {
   // init is never null
   const StringLiteral *str =
       llvm::dyn_cast_or_null<StringLiteral>(init->IgnoreImpCasts());
-  if (str) {
-    if (!isValidRegex(str->getString().str()))
+  if (str)
       return str;
-  }
   const CXXConstructExpr *string_constr =
       llvm::dyn_cast_or_null<CXXConstructExpr>(init->IgnoreImpCasts());
   if (!string_constr || string_constr->getNumArgs() < 1)
@@ -58,10 +57,8 @@ const Expr *InitRoute(const Expr *init) {
   if (!arg->IgnoreImpCasts())
     return nullptr;
   str = llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
-  if (str) {
-    if (!isValidRegex(str->getString().str()))
+  if (str)
       return str;
-  }
   return nullptr;
 }
 
@@ -82,9 +79,11 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   const DeclRefExpr *charptr = Result.Nodes.getNodeAs<DeclRefExpr>("charptr");
   if (charptr)
     diag(charptr->getBeginLoc(), "Charptr!") << charptr->getSourceRange();
+  // Debug part
   const Expr *unkown = Result.Nodes.getNodeAs<Expr>("whatami");
   if (unkown)
     diag(unkown->getBeginLoc(), "unkown! " + unkown->getType()->getCanonicalTypeInternal().getAsString()) << unkown->getSourceRange();
+  // End of debug
   const ValueDecl *baseDecl = nullptr;
   if (stringvar)
     baseDecl = stringvar->getDecl();
@@ -93,8 +92,8 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   if (!baseDecl)
     return;
     
-    const VarDecl *varDecl = llvm::dyn_cast_or_null<VarDecl>(baseDecl);
-    if (!varDecl)
+  const VarDecl *varDecl = llvm::dyn_cast_or_null<VarDecl>(baseDecl);
+  if (!varDecl)
     return;
 
   // INIT PART
@@ -102,11 +101,13 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   // to their external definition (is this true tho?)
   const Expr *init = varDecl->getCanonicalDecl()->getInit();
   if (init) {
-    const Expr *report = InitRoute(init);
-    if (report)
-      diag(report->getBeginLoc(), "Invalid!") << report->getSourceRange();
-    else
-      diag(init->getBeginLoc(), "Valid!") << init->getSourceRange();
+    const StringLiteral *report = getStrFromInitialization(init);
+    if(report){
+      if (isValidRegex(report->getString().str()))
+        diag(init->getBeginLoc(), "Valid!") << init->getSourceRange();
+      else
+        diag(report->getBeginLoc(), "Invalid!") << report->getSourceRange();
+    }
   }
   return;
 }
