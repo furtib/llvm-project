@@ -3,8 +3,34 @@ set(LLVM_LINK_COMPONENTS
   FrontendOpenMP
   )
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(RE2 REQUIRED re2)
+include(FetchContent)
+
+FetchContent_Declare(
+  quickjs
+  GIT_REPOSITORY https://github.com/bellard/quickjs.git
+  GIT_TAG        master 
+)
+
+FetchContent_MakeAvailable(quickjs)
+
+add_library(libquickjs STATIC
+    ${quickjs_SOURCE_DIR}/quickjs.c
+    ${quickjs_SOURCE_DIR}/libregexp.c
+    ${quickjs_SOURCE_DIR}/libunicode.c
+    ${quickjs_SOURCE_DIR}/cutils.c
+    ${quickjs_SOURCE_DIR}/dtoa.c
+)
+
+target_compile_definitions(libquickjs PRIVATE
+    _GNU_SOURCE
+    CONFIG_BIGNUM
+    "CONFIG_VERSION=\"2024-01-13\""
+)
+
+target_include_directories(libquickjs PUBLIC 
+    ${quickjs_SOURCE_DIR}
+)
+
 add_clang_library(clangTidyBugproneModule STATIC
   ArgumentCommentCheck.cpp
   AssertSideEffectCheck.cpp
@@ -127,5 +153,8 @@ clang_target_link_libraries(clangTidyBugproneModule
   clangSema
   clangTooling
   clangTransformer
-  ${RE2_LIBRARIES}
+  libquickjs
+  m
+  dl
+  pthread
   )

@@ -8,11 +8,110 @@
 
 #include "RegexCheck.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include <re2/re2.h>
 
 using namespace clang::ast_matchers;
 
 namespace clang::tidy::bugprone {
+
+// Must use extern "C" to include the C headers
+extern "C" {
+    #include "quickjs.h"
+}
+
+/**
+ * Helper function to extract a C-style string from a JSValue.
+ * Remember to free the string with JS_FreeCString!
+ */
+std::string GetCString(JSContext* ctx, JSValue val) {
+    const char* c_str = JS_ToCString(ctx, val);
+    if (!c_str) {
+        return "[exception]";
+    }
+    std::string str = c_str;
+    JS_FreeCString(ctx, c_str);
+    return str;
+}
+
+
+/**
+ * A C++ wrapper for a QuickJS regex engine.
+ * Manages the lifetime of the JSRuntime and JSContext.
+ */
+class QuickJsRegex {
+private:
+    JSRuntime* runtime;
+    JSContext* context;
+    JSValue compiled_regex;
+
+    QuickJsRegex(const QuickJsRegex&) = delete;
+    QuickJsRegex& operator=(const QuickJsRegex&) = delete;
+
+public:
+    QuickJsRegex() : compiled_regex(JS_UNDEFINED) {
+        runtime = JS_NewRuntime();
+        if (!runtime) {
+            //throw std::runtime_error("Failed to create JSRuntime");
+        }
+        context = JS_NewContext(runtime);
+        if (!context) {
+            JS_FreeRuntime(runtime);
+            //throw std::runtime_error("Failed to create JSContext");
+        }
+    }
+
+    ~QuickJsRegex() {
+        JS_FreeValue(context, compiled_regex);
+        
+        JS_FreeContext(context);
+        JS_FreeRuntime(runtime);
+    }
+
+    /**
+     * Attempts to compile an ECMA regex pattern.
+     * This function does not throw.
+     *
+     * @param pattern The regex pattern to compile.
+     * @param error_out A string to store the error message if compilation fails.
+     * @return true if compilation succeeded, false otherwise.
+     */
+    bool compile(const std::string& pattern, std::string& error_out) {
+        // execute the JS code: new RegExp("your_pattern_here")
+        // escape the pattern string for use inside a JS string literal.
+        // For this simple demo, we'll just escape backslashes.
+        // A robust solution would escape quotes, newlines, etc.
+        std::string escaped_pattern;
+        for (char c : pattern) {
+            if (c == '\\') {
+                escaped_pattern += "\\\\";
+            } else if (c == '"') {
+                escaped_pattern += "\\\"";
+            } else {
+                escaped_pattern += c;
+            }
+        }
+        
+        std::string code = "new RegExp(\"" + escaped_pattern + "\")";
+
+        JS_FreeValue(context, compiled_regex);
+        
+        compiled_regex = JS_Eval(context, code.c_str(), code.length(), "<input>", JS_EVAL_TYPE_GLOBAL);
+
+        if (JS_IsException(compiled_regex)) {
+            JSValue exception = JS_GetException(context);
+            
+            JSValue stack = JS_GetPropertyStr(context, exception, "stack");
+            error_out = GetCString(context, stack);
+
+            JS_FreeValue(context, stack);
+            JS_FreeValue(context, exception);
+
+            compiled_regex = JS_UNDEFINED;
+            return false;
+        }
+
+        return true;
+    }
+};
 
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
@@ -37,10 +136,9 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
 }
 
 bool isValidRegex(std::string &&s) {
-  RE2::Options options;
-  options.set_log_errors(false);
-  RE2 regex(s, options);
-  return regex.ok();
+  QuickJsRegex regex_engine;
+  std::string error;
+  return regex_engine.compile(s, error);
 }
 
 // This function tries to retrive the string literal from str and const char* variables 
