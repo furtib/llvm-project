@@ -3,6 +3,8 @@ set(LLVM_LINK_COMPONENTS
   FrontendOpenMP
   )
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(RE2 REQUIRED re2)
 add_clang_library(clangTidyBugproneModule STATIC
   ArgumentCommentCheck.cpp
   AssertSideEffectCheck.cpp
@@ -125,4 +127,5 @@ clang_target_link_libraries(clangTidyBugproneModule
   clangSema
   clangTooling
   clangTransformer
+  ${RE2_LIBRARIES}
   )

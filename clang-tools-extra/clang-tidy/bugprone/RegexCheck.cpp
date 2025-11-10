@@ -8,6 +8,7 @@
 
 #include "RegexCheck.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include <re2/re2.h>
 
 using namespace clang::ast_matchers;
 
@@ -36,8 +37,10 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
 }
 
 bool isValidRegex(std::string &&s) {
-  llvm::Regex regex(s);
-  return regex.isValid();
+  RE2::Options options;
+  options.set_log_errors(false);
+  RE2 regex(s, options);
+  return regex.ok();
 }
 
 // This function tries to retrive the string literal from str and const char* variables 
