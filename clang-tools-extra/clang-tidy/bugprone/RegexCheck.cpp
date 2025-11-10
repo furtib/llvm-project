@@ -68,8 +68,11 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
     diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
   const StringLiteral *stringlit =
       Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
-  if (stringlit && !isValidRegex(stringlit->getString().str())) {
-    diag(stringlit->getBeginLoc(), "Invalid!") << stringlit->getSourceRange();
+  if (stringlit) {
+    if(!isValidRegex(stringlit->getString().str()))
+      diag(stringlit->getBeginLoc(), "Invalid!") << stringlit->getSourceRange();
+    else
+      diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();
     return;
   }
   const DeclRefExpr *stringvar =
