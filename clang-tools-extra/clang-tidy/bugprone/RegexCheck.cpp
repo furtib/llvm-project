@@ -137,6 +137,13 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                   .bind("charptr")))))
           .bind("x"),
       this);
+  Finder->addMatcher(cxxConstructExpr(hasDeclaration(
+    cxxConstructorDecl(ofClass(classTemplateSpecializationDecl(
+                  anyOf(hasName("std::basic_regex"),
+                        hasName("boost::basic_regex")
+                      )
+                    ))
+            ))).bind("regex_constr"),this);
 }
 
 bool isValidRegex(std::string &&s) {
@@ -168,6 +175,11 @@ const StringLiteral *getStrFromInitialization(const Expr *init) {
 }
 
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {
+  const Expr* reg_con = Result.Nodes.getNodeAs<Expr>("regex_constr");
+  if(reg_con){
+    diag(reg_con->getBeginLoc(), "Match bare Constr!") << reg_con->getSourceRange();
+    return;
+  }
   const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
   if (expr)
     diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
