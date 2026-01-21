@@ -113,6 +113,10 @@ public:
     }
 };
 
+bool validate_POSIX_BRE(const std::string& regex){
+  
+}
+
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       cxxConstructExpr(
@@ -170,10 +174,11 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   const StringLiteral *stringlit =
       Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
   if (stringlit) {
-    if(!isValidRegex(stringlit->getString().str()))
+    diag(stringlit->getBeginLoc(), "String literal in REGEX") << stringlit->getSourceRange();
+    /*if(!isValidRegex(stringlit->getString().str()))
       diag(stringlit->getBeginLoc(), "Invalid!") << stringlit->getSourceRange();
     else
-      diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();
+      diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();*/
     return;
   }
   const DeclRefExpr *stringvar =
@@ -207,10 +212,11 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   if (init) {
     const StringLiteral *report = getStrFromInitialization(init);
     if(report){
-      if (isValidRegex(report->getString().str()))
+      diag(init->getBeginLoc(), "INIT!") << init->getSourceRange();
+      /*if (isValidRegex(report->getString().str()))
         diag(init->getBeginLoc(), "Valid!") << init->getSourceRange();
       else
-        diag(report->getBeginLoc(), "Invalid!") << report->getSourceRange();
+        diag(report->getBeginLoc(), "Invalid!") << report->getSourceRange();*/
     }
   }
   return;
