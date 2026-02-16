@@ -136,10 +136,11 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
           .bind("x"),
       this);
   Finder->addMatcher(
-      cxxConstructExpr(hasDeclaration(cxxConstructorDecl(
-                           ofClass(classTemplateSpecializationDecl(
-                               anyOf(hasName("std::basic_regex"),
-                                     hasName("boost::basic_regex")))))))
+      cxxConstructExpr(
+          hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
+              hasName("re2::RE2"), classTemplateSpecializationDecl(anyOf(
+                                       hasName("std::basic_regex"),
+                                       hasName("boost::basic_regex"))))))))
           .bind("regex_constr"),
       this);
 }
