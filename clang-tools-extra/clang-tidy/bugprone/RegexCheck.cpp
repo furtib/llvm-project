@@ -116,6 +116,13 @@ public:
 bool validate_POSIX_BRE(const std::string &regex) {}
 
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
+  auto isConstStdString = qualType(
+      isConstQualified(), hasUnqualifiedDesugaredType(recordType(hasDeclaration(
+                              cxxRecordDecl(hasName("::std::basic_string"))))));
+  auto getStringLit = ignoringImplicit(stringLiteral().bind("stringLiteral"));
+  auto getStringLiteralFromStdString =
+      ignoringImplicit(cxxConstructExpr(hasAnyArgument(getStringLit)));
+  auto isConstCharPtr = pointerType(pointee(builtinType(), isConstQualified()));
   Finder->addMatcher(
       cxxConstructExpr(
           hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
@@ -125,14 +132,19 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
           hasAnyArgument(ignoringImplicit(anyOf(
               stringLiteral().bind("stringLiteral"),
               declRefExpr(
-                  to(varDecl(hasType(qualType(
-                      isConstQualified(),
-                      hasUnqualifiedDesugaredType(recordType(hasDeclaration(
-                          cxxRecordDecl(hasName("::std::basic_string"))))))))))
+                  to(varDecl(hasType(isConstStdString),
+                             hasInitializer(getStringLiteralFromStdString))))
                   .bind("stringVar"),
-              declRefExpr(hasType(pointerType(
-                              pointee(builtinType(), isConstQualified()))))
-                  .bind("charptr")))))
+              declRefExpr(to(varDecl(hasType(isConstCharPtr),
+                                     hasInitializer(getStringLit))))
+                  .bind("charptr"),
+              memberExpr(member(fieldDecl(hasType(isConstStdString),
+                                          hasInClassInitializer(
+                                              getStringLiteralFromStdString))))
+                  .bind("class_string"),
+              memberExpr(member(fieldDecl(hasType(isConstCharPtr),
+                                          hasInClassInitializer(getStringLit))))
+                  .bind("class_charptr")))))
           .bind("x"),
       this);
   Finder->addMatcher(
@@ -182,7 +194,7 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   }
   const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
   if (expr)
-    diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
+    ; // diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
   const StringLiteral *stringlit =
       Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
   if (stringlit) {
@@ -194,13 +206,6 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
       diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();*/
     return;
   }
-  const DeclRefExpr *stringvar =
-      Result.Nodes.getNodeAs<DeclRefExpr>("stringVar");
-  if (stringvar)
-    diag(stringvar->getBeginLoc(), "StringVar!") << stringvar->getSourceRange();
-  const DeclRefExpr *charptr = Result.Nodes.getNodeAs<DeclRefExpr>("charptr");
-  if (charptr)
-    diag(charptr->getBeginLoc(), "Charptr!") << charptr->getSourceRange();
   // Debug part
   const Expr *unkown = Result.Nodes.getNodeAs<Expr>("whatami");
   if (unkown)
@@ -209,32 +214,6 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
              unkown->getType()->getCanonicalTypeInternal().getAsString())
         << unkown->getSourceRange();
   // End of debug
-  const ValueDecl *baseDecl = nullptr;
-  if (stringvar)
-    baseDecl = stringvar->getDecl();
-  else if (charptr)
-    baseDecl = charptr->getDecl();
-  if (!baseDecl)
-    return;
-
-  const VarDecl *varDecl = llvm::dyn_cast_or_null<VarDecl>(baseDecl);
-  if (!varDecl)
-    return;
-
-  // INIT PART
-  // getCanonicalDecl solves decls like extern std::string s;
-  // to their external definition (is this true tho?)
-  const Expr *init = varDecl->getCanonicalDecl()->getInit();
-  if (init) {
-    const StringLiteral *report = getStrFromInitialization(init);
-    if (report) {
-      diag(init->getBeginLoc(), "INIT!") << init->getSourceRange();
-      /*if (isValidRegex(report->getString().str()))
-        diag(init->getBeginLoc(), "Valid!") << init->getSourceRange();
-      else
-        diag(report->getBeginLoc(), "Invalid!") << report->getSourceRange();*/
-    }
-  }
   return;
 }
 
