@@ -144,7 +144,21 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                   .bind("class_string"),
               memberExpr(member(fieldDecl(hasType(isConstCharPtr),
                                           hasInClassInitializer(getStringLit))))
-                  .bind("class_charptr")))))
+                  .bind("class_charptr"),
+              // new part
+              cxxMemberCallExpr(
+                  callee(cxxMethodDecl(hasName("begin"))),
+                  on(expr(
+                      hasType(hasCanonicalType(hasDeclaration(
+                          cxxRecordDecl(hasName("::std::basic_string_view"))))),
+                      anyOf(declRefExpr(to(varDecl(hasInitializer(hasDescendant(
+                                stringLiteral().bind("stringLiteral")))))),
+                            memberExpr(member(
+                                fieldDecl(hasInClassInitializer(hasDescendant(
+                                    stringLiteral().bind("stringLiteral")))))),
+                            hasDescendant(
+                                stringLiteral().bind("stringLiteral"))))))
+                  .bind("string_view")))))
           .bind("x"),
       this);
   Finder->addMatcher(
