@@ -116,6 +116,30 @@ public:
 bool validate_POSIX_BRE(const std::string &regex) {}
 
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
+  auto isStdString = qualType(
+    hasUnqualifiedDesugaredType(recordType(hasDeclaration(
+        cxxRecordDecl(hasName("::std::basic_string"))))));
+  auto containsConcatOp = expr(anyOf(
+      cxxOperatorCallExpr(hasOverloadedOperatorName("+")).bind("concat_op"),
+      hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("+")).bind("concat_op"))
+  ));
+  Finder->addMatcher(
+      cxxConstructExpr(
+          hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
+              hasName("re2::RE2"), classTemplateSpecializationDecl(anyOf(
+                                       hasName("std::basic_regex"),
+                                       hasName("boost::basic_regex"))))))),
+          hasArgument(
+              0,
+              anyOf(
+                  containsConcatOp,
+                  ignoringParenImpCasts(
+                      declRefExpr(to(varDecl(hasType(isStdString),
+                                             hasInitializer(containsConcatOp))
+                                         .bind("string_decl")))
+                          .bind("string_ref")))))
+          .bind("regex_constro"),
+      this);
   auto isConstStdString = qualType(
       isConstQualified(), hasUnqualifiedDesugaredType(recordType(hasDeclaration(
                               cxxRecordDecl(hasName("::std::basic_string"))))));
@@ -123,6 +147,7 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
   auto getStringLiteralFromStdString =
       ignoringImplicit(cxxConstructExpr(hasAnyArgument(getStringLit)));
   auto isConstCharPtr = pointerType(pointee(builtinType(), isConstQualified()));
+
   Finder->addMatcher(
       cxxConstructExpr(
           hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
@@ -177,35 +202,7 @@ bool isValidRegex(std::string &&s) {
   return regex_engine.compile(s, error);
 }
 
-// This function tries to retrive the string literal from str and const char*
-// variables
-const StringLiteral *getStrFromInitialization(const Expr *init) {
-  // init is never null
-  const StringLiteral *str =
-      llvm::dyn_cast_or_null<StringLiteral>(init->IgnoreImpCasts());
-  if (str)
-    return str;
-  const CXXConstructExpr *string_constr =
-      llvm::dyn_cast_or_null<CXXConstructExpr>(init->IgnoreImpCasts());
-  if (!string_constr || string_constr->getNumArgs() < 1)
-    return nullptr;
-  const Expr *arg = string_constr->getArg(0);
-  if (!arg)
-    return nullptr;
-  if (!arg->IgnoreImpCasts())
-    return nullptr;
-  str = llvm::dyn_cast_or_null<StringLiteral>(arg->IgnoreImpCasts());
-  if (str)
-    return str;
-  return nullptr;
-}
-
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {
-  const Expr *reg_con = Result.Nodes.getNodeAs<Expr>("regex_constr");
-  if (reg_con) {
-    diag(reg_con->getBeginLoc(), "Match bare Constr!")
-        << reg_con->getSourceRange();
-  }
   const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
   if (expr)
     ; // diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
@@ -218,7 +215,16 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
       diag(stringlit->getBeginLoc(), "Invalid!") << stringlit->getSourceRange();
     else
       diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();*/
-    return;
+  }
+  const Expr *reg_con = Result.Nodes.getNodeAs<Expr>("regex_constro");
+  if (reg_con) {
+    diag(reg_con->getBeginLoc(), "non-static") << reg_con->getSourceRange();
+  }
+  const CXXConstructExpr *reg_constr =
+      Result.Nodes.getNodeAs<CXXConstructExpr>("regex_constr");
+  if (reg_constr) {
+    diag(reg_constr->getBeginLoc(), "Match bare Constr!")
+        << reg_constr->getSourceRange();
   }
   // Debug part
   const Expr *unkown = Result.Nodes.getNodeAs<Expr>("whatami");
