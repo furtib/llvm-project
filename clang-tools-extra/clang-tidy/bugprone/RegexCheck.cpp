@@ -8,121 +8,19 @@
 
 #include "RegexCheck.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include <cstdio>
+#include <iostream>
 
 using namespace clang::ast_matchers;
 
 namespace clang::tidy::bugprone {
-
-// Must use extern "C" to include the C headers
-extern "C" {
-#include "quickjs.h"
-}
-
-/**
- * Helper function to extract a C-style string from a JSValue.
- * Remember to free the string with JS_FreeCString!
- */
-std::string GetCString(JSContext *ctx, JSValue val) {
-  const char *c_str = JS_ToCString(ctx, val);
-  if (!c_str) {
-    return "[exception]";
-  }
-  std::string str = c_str;
-  JS_FreeCString(ctx, c_str);
-  return str;
-}
-
-/**
- * A C++ wrapper for a QuickJS regex engine.
- * Manages the lifetime of the JSRuntime and JSContext.
- */
-class QuickJsRegex {
-private:
-  JSRuntime *runtime;
-  JSContext *context;
-  JSValue compiled_regex;
-
-  QuickJsRegex(const QuickJsRegex &) = delete;
-  QuickJsRegex &operator=(const QuickJsRegex &) = delete;
-
-public:
-  QuickJsRegex() : compiled_regex(JS_UNDEFINED) {
-    runtime = JS_NewRuntime();
-    if (!runtime) {
-      // throw std::runtime_error("Failed to create JSRuntime");
-    }
-    context = JS_NewContext(runtime);
-    if (!context) {
-      JS_FreeRuntime(runtime);
-      // throw std::runtime_error("Failed to create JSContext");
-    }
-  }
-
-  ~QuickJsRegex() {
-    JS_FreeValue(context, compiled_regex);
-
-    JS_FreeContext(context);
-    JS_FreeRuntime(runtime);
-  }
-
-  /**
-   * Attempts to compile an ECMA regex pattern.
-   * This function does not throw.
-   *
-   * @param pattern The regex pattern to compile.
-   * @param error_out A string to store the error message if compilation fails.
-   * @return true if compilation succeeded, false otherwise.
-   */
-  bool compile(const std::string &pattern, std::string &error_out) {
-    // execute the JS code: new RegExp("your_pattern_here")
-    // escape the pattern string for use inside a JS string literal.
-    // For this simple demo, we'll just escape backslashes.
-    // A robust solution would escape quotes, newlines, etc.
-    std::string escaped_pattern;
-    for (char c : pattern) {
-      if (c == '\\') {
-        escaped_pattern += "\\\\";
-      } else if (c == '"') {
-        escaped_pattern += "\\\"";
-      } else {
-        escaped_pattern += c;
-      }
-    }
-
-    std::string code = "new RegExp(\"" + escaped_pattern + "\")";
-
-    JS_FreeValue(context, compiled_regex);
-
-    compiled_regex = JS_Eval(context, code.c_str(), code.length(), "<input>",
-                             JS_EVAL_TYPE_GLOBAL);
-
-    if (JS_IsException(compiled_regex)) {
-      JSValue exception = JS_GetException(context);
-
-      JSValue stack = JS_GetPropertyStr(context, exception, "stack");
-      error_out = GetCString(context, stack);
-
-      JS_FreeValue(context, stack);
-      JS_FreeValue(context, exception);
-
-      compiled_regex = JS_UNDEFINED;
-      return false;
-    }
-
-    return true;
-  }
-};
-
-bool validate_POSIX_BRE(const std::string &regex) {}
-
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
-  auto isStdString = qualType(
-    hasUnqualifiedDesugaredType(recordType(hasDeclaration(
-        cxxRecordDecl(hasName("::std::basic_string"))))));
+  auto isStdString = qualType(hasUnqualifiedDesugaredType(recordType(
+      hasDeclaration(cxxRecordDecl(hasName("::std::basic_string"))))));
   auto containsConcatOp = expr(anyOf(
       cxxOperatorCallExpr(hasOverloadedOperatorName("+")).bind("concat_op"),
-      hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("+")).bind("concat_op"))
-  ));
+      hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("+"))
+                        .bind("concat_op"))));
   Finder->addMatcher(
       cxxConstructExpr(
           hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
@@ -131,14 +29,13 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                                        hasName("boost::basic_regex"))))))),
           hasArgument(
               0,
-              anyOf(
-                  containsConcatOp,
-                  ignoringParenImpCasts(
-                      declRefExpr(to(varDecl(hasType(isStdString),
-                                             hasInitializer(containsConcatOp))
-                                         .bind("string_decl")))
-                          .bind("string_ref")))))
-          .bind("regex_constro"),
+              anyOf(containsConcatOp,
+                    ignoringParenImpCasts(
+                        declRefExpr(to(varDecl(hasType(isStdString),
+                                               hasInitializer(containsConcatOp))
+                                           .bind("string_decl")))
+                            .bind("string_ref")))))
+          .bind("non_stat_constructor"),
       this);
   auto isConstStdString = qualType(
       isConstQualified(), hasUnqualifiedDesugaredType(recordType(hasDeclaration(
@@ -147,7 +44,6 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
   auto getStringLiteralFromStdString =
       ignoringImplicit(cxxConstructExpr(hasAnyArgument(getStringLit)));
   auto isConstCharPtr = pointerType(pointee(builtinType(), isConstQualified()));
-
   Finder->addMatcher(
       cxxConstructExpr(
           hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
@@ -196,27 +92,85 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
       this);
 }
 
-bool isValidRegex(std::string &&s) {
-  QuickJsRegex regex_engine;
-  std::string error;
-  return regex_engine.compile(s, error);
+std::string sanitize(std::string &s) {
+  std::string sanitized("");
+  for (char c : s) {
+    if (c == '\"' || c == '\\' || c == '$' || c == '`') {
+      sanitized.push_back('\\');
+    }
+    sanitized.push_back(c);
+  }
+  return sanitized;
+}
+
+bool isValidRegex(std::string &&s, int type) {
+  std::string cmd("");
+  switch(type){
+    case 0:
+      cmd = "/bin/stdregexvalidator";
+      break;
+    case 1:
+      cmd = "/bin/boostregexvalidator";
+      break;
+    case 2:
+      cmd = "/bin/re2validator";
+      break;
+      default:
+      cmd = "/bin/stdregexvalidator";
+  }
+  cmd += " \"" + sanitize(s) + "\" > /dev/null";
+  std::string result;
+  std::array<char, 128> buffer;
+  llvm::outs() << cmd << "\n";
+  FILE *pipe = popen(cmd.c_str(), "r");
+  if (!pipe) {
+    std::cerr << "popen() failed!" << std::endl;
+    exit(1);
+  }
+  while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+    result += buffer.data();
+  }
+  int returnCode = pclose(pipe);
+  return 0 == returnCode;
 }
 
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {
   const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
-  if (expr)
-    ; // diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
+  if (expr) {
+    // diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
+  }
   const StringLiteral *stringlit =
       Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
   if (stringlit) {
     diag(stringlit->getBeginLoc(), "String literal in REGEX")
         << stringlit->getSourceRange();
-    /*if(!isValidRegex(stringlit->getString().str()))
+    int type = 0; // 0 std 1 boost 2 re2
+    const CXXConstructExpr *constructor =
+        Result.Nodes.getNodeAs<CXXConstructExpr>("x");
+    if (constructor) {
+      const CXXRecordDecl *ClassDecl =
+          constructor->getConstructor()->getParent();
+      if (ClassDecl) {
+        llvm::StringRef ClassName = ClassDecl->getName();
+        if(ClassName == "RE2"){
+          type = 2;
+        } else if (ClassName == "basic_regex"){
+          const DeclContext *Context = ClassDecl->getDeclContext();
+          if(Context->isStdNamespace())
+            type = 0;
+          else
+            type = 1;
+        }
+      }
+    }
+    ///*
+    if (!isValidRegex(stringlit->getString().str(), type))
       diag(stringlit->getBeginLoc(), "Invalid!") << stringlit->getSourceRange();
     else
-      diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();*/
+      diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();
+    //*/
   }
-  const Expr *reg_con = Result.Nodes.getNodeAs<Expr>("regex_constro");
+  const Expr *reg_con = Result.Nodes.getNodeAs<Expr>("non_stat_constructor");
   if (reg_con) {
     diag(reg_con->getBeginLoc(), "non-static") << reg_con->getSourceRange();
   }
