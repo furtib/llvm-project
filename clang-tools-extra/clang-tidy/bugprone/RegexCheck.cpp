@@ -10,6 +10,15 @@
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include <cstdio>
 #include <iostream>
+#include <boost/regex.hpp>
+#include <re2/re2.h>
+
+namespace boost {
+  void throw_exception(std::exception const &e) {
+    // Route the Boost error into LLVM's crash handler
+    llvm::report_fatal_error(llvm::StringRef("Boost regex error: ") + e.what());
+  }
+}
 
 using namespace clang::ast_matchers;
 
@@ -109,13 +118,19 @@ bool isValidRegex(std::string &&s, int type) {
     case 0:
       cmd = "/bin/stdregexvalidator";
       break;
-    case 1:
-      cmd = "/bin/boostregexvalidator";
+    case 1: // boost regex
+      {
+        boost::regex re(s, boost::regex::no_except);
+        return re.status() == 0;
+      }
       break;
     case 2:
-      cmd = "/bin/re2validator";
+      {
+        RE2 re(s);
+        return re.ok();
+      }
       break;
-      default:
+    default:
       cmd = "/bin/stdregexvalidator";
   }
   cmd += " \"" + sanitize(s) + "\" > /dev/null";

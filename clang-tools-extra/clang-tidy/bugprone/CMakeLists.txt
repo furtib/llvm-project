@@ -3,6 +3,11 @@ set(LLVM_LINK_COMPONENTS
   FrontendOpenMP
   )
 
+find_package(Boost REQUIRED COMPONENTS regex)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(RE2 REQUIRED re2)
+include_directories(${RE2_INCLUDE_DIRS})
+
 add_clang_library(clangTidyBugproneModule STATIC
   ArgumentCommentCheck.cpp
   AssertSideEffectCheck.cpp
@@ -107,6 +112,8 @@ add_clang_library(clangTidyBugproneModule STATIC
   LINK_LIBS
   clangTidy
   clangTidyUtils
+  Boost::regex
+  ${RE2_LIBRARIES}
 
   DEPENDS
   omp_gen
@@ -125,7 +132,4 @@ clang_target_link_libraries(clangTidyBugproneModule
   clangSema
   clangTooling
   clangTransformer
-  m
-  dl
-  pthread
   )
