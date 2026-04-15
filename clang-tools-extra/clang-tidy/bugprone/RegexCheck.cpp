@@ -8,10 +8,9 @@
 
 #include "RegexCheck.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include <cstdio>
-#include <iostream>
 #include <boost/regex.hpp>
 #include <re2/re2.h>
+#include <regex>
 
 namespace boost {
   void throw_exception(std::exception const &e) {
@@ -116,7 +115,12 @@ bool isValidRegex(std::string &&s, int type) {
   std::string cmd("");
   switch(type){
     case 0:
-      cmd = "/bin/stdregexvalidator";
+      try{
+        std::regex re(s);
+        return true;
+      } catch(std::regex_error &e){
+        return false;
+      }
       break;
     case 1: // boost regex
       {
@@ -131,22 +135,13 @@ bool isValidRegex(std::string &&s, int type) {
       }
       break;
     default:
-      cmd = "/bin/stdregexvalidator";
+      try{
+        std::regex re(s);
+        return true;
+      } catch(std::regex_error &e){
+        return false;
+      };
   }
-  cmd += " \"" + sanitize(s) + "\" > /dev/null";
-  std::string result;
-  std::array<char, 128> buffer;
-  llvm::outs() << cmd << "\n";
-  FILE *pipe = popen(cmd.c_str(), "r");
-  if (!pipe) {
-    std::cerr << "popen() failed!" << std::endl;
-    exit(1);
-  }
-  while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-    result += buffer.data();
-  }
-  int returnCode = pclose(pipe);
-  return 0 == returnCode;
 }
 
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {

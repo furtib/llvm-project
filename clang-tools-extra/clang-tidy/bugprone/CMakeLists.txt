@@ -133,3 +133,6 @@ clang_target_link_libraries(clangTidyBugproneModule
   clangTooling
   clangTransformer
   )
+
+set_source_files_properties(RegexCheck.cpp PROPERTIES COMPILE_FLAGS "-fexceptions"
+)
