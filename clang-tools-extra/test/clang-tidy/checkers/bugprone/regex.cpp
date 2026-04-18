@@ -33,41 +33,38 @@ public:
 
 // Triggers the check:
 void foo(){
-    
     std::basic_regex{"[0-9]++"};
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
     std::basic_regex("");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
     std::basic_regex("**");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
     std::basic_regex("\\");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
     std::basic_regex("AABB???");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
     std::basic_regex("AA(C(B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
     std::basic_regex("AA(C)B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
     std::basic_regex("(w+)(");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
-    std::basic_regex("[0-9]++");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
     boost::basic_regex("");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
     boost::basic_regex("**");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
     boost::basic_regex("\\");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Valid! [bugprone-regex]
     boost::basic_regex("AABB???");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
     boost::basic_regex("AA(C(B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
     boost::basic_regex("AA(C)B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
     boost::basic_regex("(w+)(");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
     boost::basic_regex("[0-9]++");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex! [bugprone-regex]
+    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
 }
 
 // FIXME: Add something that doesn't trigger the check here.
