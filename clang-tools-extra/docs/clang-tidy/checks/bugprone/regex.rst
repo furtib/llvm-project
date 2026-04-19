@@ -3,5 +3,14 @@
 bugprone-regex
 ==============
 
-FIXME: Describe what patterns does the check detect and why. Give examples.
-The check detects invalid regex in const strings, to alert user of a faulty regex.
+The check detect malformed regex patterns in std::regex, boost::regex and re2::RE2.
+It detects patterns defined directly in the constructor call, or defined in a constant variable.
+
+Examples:
+std::regex re("(");
+
+const std::string s = "+";
+boost::regex re(s);
+
+const char* c = "a++";
+re2::RE2 re(c);

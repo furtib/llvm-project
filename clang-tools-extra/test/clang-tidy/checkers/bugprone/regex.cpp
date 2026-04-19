@@ -1,72 +1,61 @@
 // RUN: %check_clang_tidy %s bugprone-regex %t
 namespace std {
-/*
-template <typename T>
-struct basic_string {
-    basic_string();
-    void clear();
-    bool empty();
-    void assign(size_t, const T &);
-};
-
-typedef basic_string<char> string;
-*/
 template <class T>
-class basic_regex{
+class basic_regex {
 public:
     basic_regex(const T *q){};
     ~basic_regex(){}
 };
-
+typedef basic_regex<char> regex;
 } // namespace std
 
-namespace boost {
 
+namespace boost {
 template <class T>
-class basic_regex{
+class basic_regex {
 public:
     basic_regex(const T *){};
     ~basic_regex(){}
 };
+typedef basic_regex<char> regex;
+} // namespace boost
 
-} // namespace boosts
+namespace re2{
+class RE2{
+public:
+    RE2(const char* q){};
+    ~RE2(){};
+};
+} // namespace re2
 
 // Triggers the check:
 void foo(){
-    std::basic_regex{"[0-9]++"};
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
-    std::basic_regex("");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
-    std::basic_regex("**");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
-    std::basic_regex("\\");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
-    std::basic_regex("AABB???");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Valid! [bugprone-regex]
-    std::basic_regex("AA(C(B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
-    std::basic_regex("AA(C)B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
-    std::basic_regex("(w+)(");
-    // CHECK-MESSAGES: :[[@LINE-1]]:22: warning: Invalid regex pattern! [bugprone-regex]
-    boost::basic_regex("");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
-    boost::basic_regex("**");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
-    boost::basic_regex("\\");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Valid! [bugprone-regex]
-    boost::basic_regex("AABB???");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
-    boost::basic_regex("AA(C(B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
-    boost::basic_regex("AA(C)B)A");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
-    boost::basic_regex("(w+)(");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
-    boost::basic_regex("[0-9]++");
-    // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: Invalid regex pattern! [bugprone-regex]
+    std::regex("(");
+    // CHECK-MESSAGES: :[[@LINE-1]]:16: warning: Invalid regex pattern! [bugprone-regex]
+    std::regex("+");
+    // CHECK-MESSAGES: :[[@LINE-1]]:16: warning: Invalid regex pattern! [bugprone-regex]
+    boost::regex("+");
+    // CHECK-MESSAGES: :[[@LINE-1]]:18: warning: Invalid regex pattern! [bugprone-regex]
+    boost::regex("a**");
+    // CHECK-MESSAGES: :[[@LINE-1]]:18: warning: Invalid regex pattern! [bugprone-regex]
+    boost::regex("(");
+    // CHECK-MESSAGES: :[[@LINE-1]]:18: warning: Invalid regex pattern! [bugprone-regex]
+    re2::RE2("+");
+    // CHECK-MESSAGES: :[[@LINE-1]]:14: warning: Invalid regex pattern! [bugprone-regex]
+    re2::RE2("a**");
+    // CHECK-MESSAGES: :[[@LINE-1]]:14: warning: Invalid regex pattern! [bugprone-regex]
+    re2::RE2("(");
+    // CHECK-MESSAGES: :[[@LINE-1]]:14: warning: Invalid regex pattern! [bugprone-regex]
 }
 
-// FIXME: Add something that doesn't trigger the check here.
-//std::basic_regex correct("[0-9]+");
-int d;
+// Valid patterns that do not trigger the check:
+void correct_patterns() {
+    std::regex correct_std("[0-9]+");
+    boost::regex correct_boost("^[a-zA-Z]+$");
+    re2::RE2 correct_re2("^[a-zA-Z]+$");
+
+    // Test alternative initializations
+    std::regex correct_std2{"[A-Z]*"};
+    boost::regex correct_boost2{"(a|b|c)"};
+    re2::RE2 correct_re22{"(a|b|c)"};
+}

@@ -12,40 +12,14 @@
 #include <re2/re2.h>
 #include <regex>
 
-namespace boost {
-void throw_exception(std::exception const &e) {
-  // Route the Boost error into LLVM's crash handler
-  llvm::report_fatal_error(llvm::StringRef("Boost regex error: ") + e.what());
-}
-} // namespace boost
-
 using namespace clang::ast_matchers;
 
 namespace clang::tidy::bugprone {
+bool RegexCheck::isLanguageVersionSupported(const LangOptions &LangOpts) const {
+  return LangOpts.CPlusPlus;
+}
+
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
-  // non-static matcher
-  auto isStdString = qualType(hasUnqualifiedDesugaredType(recordType(
-      hasDeclaration(cxxRecordDecl(hasName("::std::basic_string"))))));
-  auto containsConcatOp = expr(anyOf(
-      cxxOperatorCallExpr(hasOverloadedOperatorName("+")).bind("concat_op"),
-      hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("+"))
-                        .bind("concat_op"))));
-  Finder->addMatcher(
-      cxxConstructExpr(
-          hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
-              hasName("re2::RE2"), classTemplateSpecializationDecl(anyOf(
-                                       hasName("std::basic_regex"),
-                                       hasName("boost::basic_regex"))))))),
-          hasArgument(
-              0,
-              anyOf(containsConcatOp,
-                    ignoringParenImpCasts(
-                        declRefExpr(to(varDecl(hasType(isStdString),
-                                               hasInitializer(containsConcatOp))
-                                           .bind("string_decl")))
-                            .bind("string_ref")))))
-          .bind("non_stat_constructor"),
-      this);
   // main matcher
   auto isConstStdString = qualType(
       isConstQualified(), hasUnqualifiedDesugaredType(recordType(hasDeclaration(
@@ -76,7 +50,6 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
               memberExpr(member(fieldDecl(hasType(isConstCharPtr),
                                           hasInClassInitializer(getStringLit))))
                   .bind("class_charptr"),
-              // new part
               cxxMemberCallExpr(
                   callee(cxxMethodDecl(hasName("begin"))),
                   on(expr(
@@ -90,20 +63,11 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                             hasDescendant(
                                 stringLiteral().bind("stringLiteral"))))))
                   .bind("string_view")))))
-          .bind("x"),
-      this);
-  // constructor matcher
-  Finder->addMatcher(
-      cxxConstructExpr(
-          hasDeclaration(cxxConstructorDecl(ofClass(anyOf(
-              hasName("re2::RE2"), classTemplateSpecializationDecl(anyOf(
-                                       hasName("std::basic_regex"),
-                                       hasName("boost::basic_regex"))))))))
-          .bind("regex_constr"),
+          .bind("constr"),
       this);
 }
 
-std::pair<bool, std::string> isValidRegex(std::string &&s, int type) {
+std::pair<bool, std::string> RegexCheck::isValidRegex(std::string &&s, int type) {
   switch (type) {
   case 0:
     try {
@@ -123,7 +87,9 @@ std::pair<bool, std::string> isValidRegex(std::string &&s, int type) {
     }
   } break;
   case 2: {
-    RE2 re(s);
+    re2::RE2::Options options;
+    options.set_log_errors(false);
+    re2::RE2 re(s, options);
     return std::pair(re.ok(), re.error());
   } break;
   default:
@@ -137,20 +103,13 @@ std::pair<bool, std::string> isValidRegex(std::string &&s, int type) {
 }
 
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {
-  const Expr *expr = Result.Nodes.getNodeAs<Expr>("x");
-  if (expr) {
-    // diag(expr->getBeginLoc(), "Match Constr!") << expr->getSourceRange();
-  }
   const StringLiteral *stringlit =
       Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
   if (stringlit) {
-    diag(stringlit->getBeginLoc(), "String literal in REGEX")
-        << stringlit->getSourceRange();
-
     // figure out which constructor was matched.
     int type = 0; // 0 std 1 boost 2 re2
     const CXXConstructExpr *constructor =
-        Result.Nodes.getNodeAs<CXXConstructExpr>("x");
+        Result.Nodes.getNodeAs<CXXConstructExpr>("constr");
     if (constructor) {
       const CXXRecordDecl *ClassDecl =
           constructor->getConstructor()->getParent();
@@ -173,30 +132,7 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
     if (!validity.first)
       diag(stringlit->getBeginLoc(), "Invalid regex pattern!") << stringlit->getSourceRange();
       //diag(stringlit->getBeginLoc(), "Invalid regex pattern! " + validity.second) << stringlit->getSourceRange();
-    else
-      diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();
-      //diag(stringlit->getBeginLoc(), "Valid!") << stringlit->getSourceRange();
   }
-
-  // Search for definitely non-static patterns
-  const Expr *reg_con = Result.Nodes.getNodeAs<Expr>("non_stat_constructor");
-  if (reg_con) {
-    diag(reg_con->getBeginLoc(), "non-static") << reg_con->getSourceRange();
-  }
-  const CXXConstructExpr *reg_constr =
-      Result.Nodes.getNodeAs<CXXConstructExpr>("regex_constr");
-  if (reg_constr) {
-    diag(reg_constr->getBeginLoc(), "Match bare Constr!")
-        << reg_constr->getSourceRange();
-  }
-  // Debug part
-  const Expr *unkown = Result.Nodes.getNodeAs<Expr>("whatami");
-  if (unkown)
-    diag(unkown->getBeginLoc(),
-         "unkown! " +
-             unkown->getType()->getCanonicalTypeInternal().getAsString())
-        << unkown->getSourceRange();
-  // End of debug
   return;
 }
 

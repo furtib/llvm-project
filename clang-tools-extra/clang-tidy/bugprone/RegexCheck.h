@@ -21,6 +21,8 @@ class RegexCheck : public ClangTidyCheck {
 public:
   RegexCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  std::pair<bool, std::string> isValidRegex(std::string &&s, int type);
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override;
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
