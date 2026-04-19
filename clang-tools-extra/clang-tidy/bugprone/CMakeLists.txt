@@ -4,8 +4,6 @@ set(LLVM_LINK_COMPONENTS
   )
 
 find_package(Boost REQUIRED COMPONENTS regex)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(RE2 REQUIRED re2)
 include_directories(${RE2_INCLUDE_DIRS})
 
 add_clang_library(clangTidyBugproneModule STATIC
@@ -134,5 +132,14 @@ clang_target_link_libraries(clangTidyBugproneModule
   clangTransformer
   )
 
-set_source_files_properties(RegexCheck.cpp PROPERTIES COMPILE_FLAGS "-fexceptions"
-)
+if (MSVC)
+  # Windows
+  set_source_files_properties(RegexCheck.cpp PROPERTIES COMPILE_FLAGS "/EHsc")
+  find_package(re2 CONFIG REQUIRED)
+else()
+  # Linux
+  set_source_files_properties(RegexCheck.cpp PROPERTIES COMPILE_FLAGS "-fexceptions")
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(RE2 REQUIRED re2)
+endif()
+
