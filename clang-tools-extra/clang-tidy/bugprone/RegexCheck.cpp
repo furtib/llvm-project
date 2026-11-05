@@ -130,8 +130,8 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
     // Check validity of the pattern
     std::pair<bool, std::string> validity = isValidRegex(stringlit->getString().str(), type);
     if (!validity.first)
-      diag(stringlit->getBeginLoc(), "Invalid regex pattern!") << stringlit->getSourceRange();
-      //diag(stringlit->getBeginLoc(), "Invalid regex pattern! " + validity.second) << stringlit->getSourceRange();
+      diag(stringlit->getBeginLoc(), "invalid regex pattern: %0")
+          << validity.second << stringlit->getSourceRange();
   }
   return;
 }
