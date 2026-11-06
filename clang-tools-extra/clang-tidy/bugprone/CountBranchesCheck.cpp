@@ -236,11 +236,12 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     // BINARY_OPERATION(Div, "/")
     // BINARY_OPERATION(Rem, "%")
     switch (binaryOp->getOpcode()) {
+    // We intentionally ignore this!
     // The comma operator discards its LHS; the value (and thus the degree) of
     // `a, b` is just `b`. Only recurse into the RHS.
-    case BO_Comma:
-      deg = countDegree(binaryOp->getRHS());
-      break;
+    //case BO_Comma:
+    //  deg = countDegree(binaryOp->getRHS());
+    //  break;
     // overflow into the next one
     case BO_Div:
     case BO_DivAssign:
@@ -385,13 +386,14 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
         ans[3] += 1;
       }
       // The comma operator discards its LHS; the condition value is just the
+      // intentionally disabled
       // RHS, so only descend into the RHS (ignore side-effects on the LHS).
-      if (b->getOpcode() == BO_Comma) {
-        stack.push(b->getRHS()->IgnoreParenCasts());
-      } else {
+      //if (b->getOpcode() == BO_Comma) {
+      //  stack.push(b->getRHS()->IgnoreParenCasts());
+      //} else {
         stack.push(b->getLHS()->IgnoreParenCasts());
         stack.push(b->getRHS()->IgnoreParenCasts());
-      }
+      //}
     }
     // walk into parentheses
     const auto *parenExpr =
