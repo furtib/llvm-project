@@ -37,18 +37,25 @@ void CountBranchesCheck::registerMatchers(MatchFinder *Finder) {
                      this);
 }
 
+// A compile-time constant operand: contributes degree 0 to any surrounding
+// arithmetic (e.g. the `2` in `2 * x`). We strip parens/casts once and test
+// every constant literal kind clang can produce in an arithmetic context.
 static bool isLiteral(const Expr *e) {
-  if (llvm::dyn_cast_or_null<CXXBoolLiteralExpr>(e->IgnoreParenCasts()))
-    return true; // what if if(true)?
-  if (llvm::dyn_cast_or_null<CharacterLiteral>(e->IgnoreParenCasts()))
-    return true; // what if if('a')?
-  if (llvm::dyn_cast_or_null<StringLiteral>(e->IgnoreParenCasts()))
-    return true; // what if if("hi")?
-  if (llvm::dyn_cast_or_null<IntegerLiteral>(e->IgnoreParenCasts()))
-    return true; // what if if(0)?
-  if (llvm::dyn_cast_or_null<FloatingLiteral>(e->IgnoreParenCasts()))
-    return true; // what if if(0.0)?
-  return false;
+  if (!e)
+    return false;
+  e = e->IgnoreParenCasts();
+  if (!e)
+    return false;
+  return llvm::isa<CXXBoolLiteralExpr,  // true / false
+                   CharacterLiteral,    // 'a'
+                   StringLiteral,       // "hi"
+                   IntegerLiteral,      // 0, 42
+                   FloatingLiteral,     // 0.0, 3.14
+                   ImaginaryLiteral,    // 2i
+                   CXXNullPtrLiteralExpr, // nullptr
+                   UnaryExprOrTypeTraitExpr // sizeof(x), alignof(T): compile-time
+                                            // constants, argument is unevaluated
+                   >(e);
 }
 
 static bool isEssentiallyDeclRefExpr(const Expr *e) {
@@ -69,10 +76,18 @@ static bool isEssentiallyDeclRefExpr(const Expr *e) {
   return false;
 }
 
+// Resolve an OpaqueValueExpr to its underlying source expression, then strip
+// parens/casts. clang introduces OpaqueValueExpr to model shared operands
+// (notably the common operand of a GNU `a ?: b` BinaryConditionalOperator), so
+// any tree walk must unwrap it or it will match none of the node handlers and
+// be silently dropped. Loops in case the source expr is itself opaque.
 static const Expr *unwrapOpaqueValueExpr(const Expr *e) {
-  const OpaqueValueExpr *o = llvm::dyn_cast_or_null<OpaqueValueExpr>(e);
-  if (o) {
-    return o->getSourceExpr();
+  while (e) {
+    e = e->IgnoreParenCasts();
+    const auto *o = llvm::dyn_cast_or_null<OpaqueValueExpr>(e);
+    if (!o)
+      break;
+    e = o->getSourceExpr();
   }
   return e;
 }
@@ -163,16 +178,39 @@ const std::set<StringRef> NonLinears = {
     "atan2l",
 };
 
-int mymax(int lhs, int rhs) {
+// Degree encoding (meta info):
+//   >= 0 : real polynomial degree
+//   -1   : function call (unknown behavior, assumed non-linear)
+//   -2   : unknown / unhandled expression
+//
+// Sentinel priority: -2 (unknown) dominates -1 (function), which dominates any
+// real degree. std::min captures this since -2 < -1 < 0 <= deg.
+
+// Combine two sub-expression degrees that are ADDED together (e.g. a + b,
+// a - b, the two arms of ?:). The resulting polynomial degree is the max of
+// the operands' degrees.
+int maxDeg(int lhs, int rhs) {
   if (lhs < 0 || rhs < 0)
     return std::min(lhs, rhs);
   return std::max(lhs, rhs);
+}
+
+// Combine two sub-expression degrees that are MULTIPLIED together (e.g. a * b,
+// a / b). Polynomial degrees add under multiplication: deg(a*b) = deg a + deg b.
+int addDeg(int lhs, int rhs) {
+  if (lhs < 0 || rhs < 0)
+    return std::min(lhs, rhs);
+  return lhs + rhs;
 }
 
 // meta info:
 // -1 == function
 // -2 == Unknown
 int CountBranchesCheck::countDegree(const Expr *expr) {
+  // Normalize: strip parens/casts and resolve any OpaqueValueExpr (e.g. the
+  // shared operand of a GNU `a ?: b`) up front, so every node handler below
+  // sees the real underlying expression.
+  expr = unwrapOpaqueValueExpr(expr);
   if (!expr)
     return 0;
   if (isLiteral(expr))
@@ -185,12 +223,10 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     return -1;
   // If the result is not a unary or binary expr, then we don't know what it is!
   int deg = -2;
-  const auto *u =
-      llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenCasts());
+  const auto *u = llvm::dyn_cast_or_null<UnaryOperator>(expr);
   if (u)
-    deg = countDegree(u->getSubExpr()->IgnoreParenCasts());
-  const auto *binaryOp =
-      llvm::dyn_cast_or_null<BinaryOperator>(expr->IgnoreParenCasts());
+    deg = countDegree(u->getSubExpr());
+  const auto *binaryOp = llvm::dyn_cast_or_null<BinaryOperator>(expr);
   if (binaryOp) {
     // multiplicative operators defined by clang:
     // static bool isMultiplicativeOp(Opcode Opc) {
@@ -209,32 +245,34 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     case BO_RemAssign:
     case BO_Mul:
     case BO_MulAssign:
-      if (isLiteral(binaryOp->getLHS()) || isLiteral(binaryOp->getRHS()))
-        break;
-      deg = 1 + mymax(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
-                      countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
+      // Degrees add under multiplication/division: deg(a*b) = deg a + deg b.
+      // Literal operands contribute degree 0 (handled by countDegree), so
+      // e.g. 2*x -> addDeg(0, 1) = 1 falls out naturally.
+      deg = addDeg(countDegree(binaryOp->getLHS()),
+                   countDegree(binaryOp->getRHS()));
       break;
     default:
-      deg = mymax(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
-                  countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
+      // Additive and all other binary operators: degree is the max of operands.
+      deg = maxDeg(countDegree(binaryOp->getLHS()),
+                   countDegree(binaryOp->getRHS()));
       break;
     }
   }
 
-  // walk into parentheses
-  const auto *parenExpr =
-      llvm::dyn_cast_or_null<ParenExpr>(expr->IgnoreParenCasts());
-  if (parenExpr) {
-    deg = countDegree(parenExpr->getSubExpr()->IgnoreParenCasts());
+  // If it's a conditional operator, its degree is the max of the two arms.
+  const auto *condOp = llvm::dyn_cast_or_null<ConditionalOperator>(expr);
+  if (condOp) {
+    deg = maxDeg(countDegree(condOp->getTrueExpr()),
+                 countDegree(condOp->getFalseExpr()));
   }
 
-  // If it's a conditional operator, push its sub-expressions
-  const auto *condOp =
-      llvm::dyn_cast_or_null<ConditionalOperator>(expr->IgnoreParenCasts());
-  if (condOp) {
-    // stack.push(condOp->getCond()->IgnoreParenCasts()); // if const?
-    deg = mymax(countDegree(condOp->getTrueExpr()->IgnoreParenCasts()),
-                countDegree(condOp->getFalseExpr()->IgnoreParenCasts()));
+  // GNU binary conditional `a ?: b`: the "true" value is the common operand
+  // (an OpaqueValueExpr wrapping the condition), the false value is the else.
+  // getTrueExpr() here is the OpaqueValueExpr, which countDegree unwraps.
+  const auto *binCondOp = llvm::dyn_cast_or_null<BinaryConditionalOperator>(expr);
+  if (binCondOp) {
+    deg = maxDeg(countDegree(binCondOp->getTrueExpr()),
+                 countDegree(binCondOp->getFalseExpr()));
   }
   /*
   const auto *callOp =
@@ -268,10 +306,14 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
   llvm::SmallSet<std::string, 8>
       names; // who the hell uses more than 8 vars in one condition
   std::stack<const Expr *> stack;
-  stack.push(unwrapOpaqueValueExpr(expr->IgnoreParenCasts()));
+  stack.push(expr);
   while (!stack.empty()) {
     const Expr *e = stack.top();
     stack.pop();
+    // Strip parens/casts and resolve OpaqueValueExpr on EVERY node (not just
+    // the root), so opaque operands introduced inside the tree (e.g. by a GNU
+    // `a ?: b`) are not silently dropped.
+    e = unwrapOpaqueValueExpr(e);
     if (!e) { // potencial Segfault/Aborted
       continue;
     }
@@ -372,15 +414,14 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
       stack.push(condOp->getFalseExpr()->IgnoreParenCasts());
     }
 
-    /* These don't work
-    // If it's a binary conditional operator, push its sub-expressions
+    // GNU binary conditional `a ?: b`: traverse both the common operand
+    // (getTrueExpr(), an OpaqueValueExpr resolved on pop) and the else value.
     const auto *binCondOp =
-    llvm::dyn_cast_or_null<BinaryConditionalOperator>(e->IgnoreParens()); if
-    (binaryOp) { stack.push(binCondOp->getCond());
-            stack.push(binCondOp->getTrueExpr());
-            stack.push(binCondOp->getFalseExpr());
+        llvm::dyn_cast_or_null<BinaryConditionalOperator>(e);
+    if (binCondOp) {
+      stack.push(binCondOp->getTrueExpr());
+      stack.push(binCondOp->getFalseExpr());
     }
-    */
   }
   ans[0] = names.size();
   return ans;
