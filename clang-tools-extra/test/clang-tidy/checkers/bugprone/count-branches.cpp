@@ -99,13 +99,25 @@ void degrees(int x, int y, int z) {
   // --- more unknown (-2) cases: other unmodeled expression kinds ---
   if (new int) {}
   // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 0 func: 0 and: 0 or: 0 deg: -2 [bugprone-count-branches]
+
+  // --- comma operator: value is the RHS only; the LHS is discarded ---
+  // The LHS is evaluated for side effects but does not contribute to the
+  // condition's value, so it must NOT be counted (vars/funcs/and/or) and must
+  // NOT influence the degree. Here the LHS is an unmodeled CXXThrowExpr (-2)
+  // and an unmodeled bare LambdaExpr respectively; both are correctly ignored,
+  // leaving just the RHS `x` (deg 1).
   if (throw 1, x) {}
-  // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 1 func: 0 and: 0 or: 0 deg: -2 [bugprone-count-branches]
-  // Comma yields its RHS type (int), so ONLY the comma result is converted to
-  // bool -- not the LHS lambda. The LHS stays a bare, unconverted LambdaExpr
-  // (unmodeled -> -2); maxDeg(-2, deg(x)=1) = -2. (`(x, []{...})` -> -1.)
+  // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 1 func: 0 and: 0 or: 0 deg: 1 [bugprone-count-branches]
   if (([] { return true; }, x)) {}
-  // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 1 func: 0 and: 0 or: 0 deg: -2 [bugprone-count-branches]
+  // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 1 func: 0 and: 0 or: 0 deg: 1 [bugprone-count-branches]
+  // A quadratic/call LHS is likewise discarded: only the RHS `x` counts.
+  if ((x * x, x)) {}
+  // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 1 func: 0 and: 0 or: 0 deg: 1 [bugprone-count-branches]
+  if ((f(), x)) {}
+  // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 1 func: 0 and: 0 or: 0 deg: 1 [bugprone-count-branches]
+  // The && in the discarded LHS must not be counted; value is the RHS `y`.
+  if ((x && y, y)) {}
+  // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: var: 1 func: 0 and: 0 or: 0 deg: 1 [bugprone-count-branches]
 
   // Ternary whose true-arm is an unmodeled CXXThrowExpr. clang also matches
   // the inner ConditionalOperator, which constant-folds the live arm to `x`

@@ -10,7 +10,7 @@
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_COUNTBRANCHESCHECK_H
 
 #include "../ClangTidyCheck.h"
-#include <vector>
+#include <array>
 
 namespace clang {
 namespace tidy {
@@ -24,8 +24,6 @@ namespace tidy {
         public:
             CountBranchesCheck(StringRef Name, ClangTidyContext* Context)
                 : ClangTidyCheck(Name, Context)
-                , Total(0)
-                , Linear(0)
             {
             }
             void registerMatchers(ast_matchers::MatchFinder* Finder) override;
@@ -36,12 +34,6 @@ namespace tidy {
             void checkLinearity(const Expr* stmt);
             std::array<int, 4> countVarFuncAndOr(const Expr* expr);
             int countDegree(const Expr* expr);
-            std::pair<int, int> countAndOr(const Expr* expr);
-            std::string arrName;
-            clang::SourceManager* LO;
-            clang::SourceManager* SM;
-            int Total;
-            int Linear;
         };
 
     } // namespace bugprone

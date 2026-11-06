@@ -16,8 +16,6 @@
 #include "clang/AST/Type.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Lex/Lexer.h"
 #include "llvm/Support/Casting.h"
 #include <algorithm>
 #include <llvm/ADT/SmallSet.h>
@@ -238,6 +236,11 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     // BINARY_OPERATION(Div, "/")
     // BINARY_OPERATION(Rem, "%")
     switch (binaryOp->getOpcode()) {
+    // The comma operator discards its LHS; the value (and thus the degree) of
+    // `a, b` is just `b`. Only recurse into the RHS.
+    case BO_Comma:
+      deg = countDegree(binaryOp->getRHS());
+      break;
     // overflow into the next one
     case BO_Div:
     case BO_DivAssign:
@@ -314,7 +317,7 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
     // the root), so opaque operands introduced inside the tree (e.g. by a GNU
     // `a ?: b`) are not silently dropped.
     e = unwrapOpaqueValueExpr(e);
-    if (!e) { // potencial Segfault/Aborted
+    if (!e) {
       continue;
     }
     // if its a variable, count it
@@ -327,13 +330,8 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
         llvm::dyn_cast_or_null<MemberExpr>(e->IgnoreParenCasts());
     if (member != nullptr && member->getMemberDecl() != nullptr) {
       std::string name;
-      const Expr *base =
-          member->getBase()
-              ->IgnoreParenCasts(); // TODO: potencial Aborted (core dumped)
+      const Expr *base = member->getBase()->IgnoreParenCasts();
       if (base) {
-        // arrName +=
-        // Lexer::getSourceText(CharSourceRange::getTokenRange(base->getSourceRange()),
-        // *SM, LangOptions()).str();
         const DeclRefExpr *baseVar =
             llvm::dyn_cast_or_null<DeclRefExpr>(base->IgnoreParenImpCasts());
         if (baseVar != nullptr && baseVar->getDecl() != nullptr) {
@@ -386,8 +384,14 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
       } else if (b->getOpcode() == BO_LOr) {
         ans[3] += 1;
       }
-      stack.push(b->getLHS()->IgnoreParenCasts());
-      stack.push(b->getRHS()->IgnoreParenCasts());
+      // The comma operator discards its LHS; the condition value is just the
+      // RHS, so only descend into the RHS (ignore side-effects on the LHS).
+      if (b->getOpcode() == BO_Comma) {
+        stack.push(b->getRHS()->IgnoreParenCasts());
+      } else {
+        stack.push(b->getLHS()->IgnoreParenCasts());
+        stack.push(b->getRHS()->IgnoreParenCasts());
+      }
     }
     // walk into parentheses
     const auto *parenExpr =
@@ -428,7 +432,6 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
 }
 
 void CountBranchesCheck::checkLinearity(const Expr *stmt) {
-  arrName = "";
   if (!stmt)
     return;
   std::array<int, 4> ans = countVarFuncAndOr(stmt);
@@ -437,15 +440,12 @@ void CountBranchesCheck::checkLinearity(const Expr *stmt) {
                                 " func: " + llvm::Twine(ans[1]).str() +
                                 " and: " + llvm::Twine(ans[2]).str() +
                                 " or: " + llvm::Twine(ans[3]).str() + " deg: " +
-                                llvm::Twine(countDegree(stmt)).str() + arrName)
+                                llvm::Twine(countDegree(stmt)).str())
       << stmt->getSourceRange();
 }
 
 void CountBranchesCheck::check(const MatchFinder::MatchResult &Result) {
-  Total += 1;
   checkLinearity(Result.Nodes.getNodeAs<Expr>("cond"));
-  LO = Result.SourceManager;
-  SM = &Result.Context->getSourceManager();
 }
 
 } // namespace bugprone
