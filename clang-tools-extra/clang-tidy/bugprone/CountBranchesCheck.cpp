@@ -163,11 +163,15 @@ const std::set<StringRef> NonLinears = {
     "atan2l",
 };
 
-int mymax(int lhs, int rhs){
-  if(lhs == -1 || rhs == -1) return -1;
+int mymax(int lhs, int rhs) {
+  if (lhs < 0 || rhs < 0)
+    return std::min(lhs, rhs);
   return std::max(lhs, rhs);
 }
 
+// meta info:
+// -1 == function
+// -2 == Unknown
 int CountBranchesCheck::countDegree(const Expr *expr) {
   if (!expr)
     return 0;
@@ -175,10 +179,12 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     return 0;
   if (isEssentiallyDeclRefExpr(expr))
     return 1;
-  // We don't know anything about the function calls, we assume they are non linear
+  // We don't know anything about the function calls, we assume they are non
+  // linear
   if (llvm::isa<CallExpr>(expr))
     return -1;
-  int deg = 1;
+  // If the result is not a unary or binary expr, then we don't know what it is!
+  int deg = -2;
   const auto *u =
       llvm::dyn_cast_or_null<UnaryOperator>(expr->IgnoreParenCasts());
   if (u)
@@ -206,13 +212,29 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
       if (isLiteral(binaryOp->getLHS()) || isLiteral(binaryOp->getRHS()))
         break;
       deg = 1 + mymax(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
-                         countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
+                      countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
       break;
     default:
       deg = mymax(countDegree(binaryOp->getLHS()->IgnoreParenCasts()),
-                     countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
+                  countDegree(binaryOp->getRHS()->IgnoreParenCasts()));
       break;
     }
+  }
+
+  // walk into parentheses
+  const auto *parenExpr =
+      llvm::dyn_cast_or_null<ParenExpr>(expr->IgnoreParenCasts());
+  if (parenExpr) {
+    deg = countDegree(parenExpr->getSubExpr()->IgnoreParenCasts());
+  }
+
+  // If it's a conditional operator, push its sub-expressions
+  const auto *condOp =
+      llvm::dyn_cast_or_null<ConditionalOperator>(expr->IgnoreParenCasts());
+  if (condOp) {
+    // stack.push(condOp->getCond()->IgnoreParenCasts()); // if const?
+    deg = mymax(countDegree(condOp->getTrueExpr()->IgnoreParenCasts()),
+                countDegree(condOp->getFalseExpr()->IgnoreParenCasts()));
   }
   /*
   const auto *callOp =
@@ -231,6 +253,7 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     }
   }
   */
+
   return deg;
 }
 
@@ -249,7 +272,7 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
   while (!stack.empty()) {
     const Expr *e = stack.top();
     stack.pop();
-    if(!e){ // potencial Segfault/Aborted
+    if (!e) { // potencial Segfault/Aborted
       continue;
     }
     // if its a variable, count it
@@ -262,7 +285,9 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
         llvm::dyn_cast_or_null<MemberExpr>(e->IgnoreParenCasts());
     if (member != nullptr && member->getMemberDecl() != nullptr) {
       std::string name;
-      const Expr *base = member->getBase()->IgnoreParenCasts(); // TODO: potencial Aborted (core dumped)
+      const Expr *base =
+          member->getBase()
+              ->IgnoreParenCasts(); // TODO: potencial Aborted (core dumped)
       if (base) {
         // arrName +=
         // Lexer::getSourceText(CharSourceRange::getTokenRange(base->getSourceRange()),
