@@ -331,7 +331,10 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
         llvm::dyn_cast_or_null<MemberExpr>(e->IgnoreParenCasts());
     if (member != nullptr && member->getMemberDecl() != nullptr) {
       std::string name;
-      const Expr *base = member->getBase()->IgnoreParenCasts();
+      // getBase() can be null (e.g. implicit-object member refs); guard it
+      // before dereferencing.
+      const Expr *rawBase = member->getBase();
+      const Expr *base = rawBase ? rawBase->IgnoreParenCasts() : nullptr;
       if (base) {
         const DeclRefExpr *baseVar =
             llvm::dyn_cast_or_null<DeclRefExpr>(base->IgnoreParenImpCasts());
@@ -374,7 +377,7 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
     const auto *u =
         llvm::dyn_cast_or_null<UnaryOperator>(e->IgnoreParenCasts());
     if (u) {
-      stack.push(u->getSubExpr()->IgnoreParenCasts());
+      stack.push(u->getSubExpr());
     }
     // if its a binary operator, push its children
     const auto *b =
@@ -389,17 +392,17 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
       // intentionally disabled
       // RHS, so only descend into the RHS (ignore side-effects on the LHS).
       //if (b->getOpcode() == BO_Comma) {
-      //  stack.push(b->getRHS()->IgnoreParenCasts());
+      //  stack.push(b->getRHS());
       //} else {
-        stack.push(b->getLHS()->IgnoreParenCasts());
-        stack.push(b->getRHS()->IgnoreParenCasts());
+        stack.push(b->getLHS());
+        stack.push(b->getRHS());
       //}
     }
     // walk into parentheses
     const auto *parenExpr =
         llvm::dyn_cast_or_null<ParenExpr>(e->IgnoreParenCasts());
     if (parenExpr) {
-      stack.push(parenExpr->getSubExpr()->IgnoreParenCasts());
+      stack.push(parenExpr->getSubExpr());
     }
     const auto *call = llvm::dyn_cast_or_null<CallExpr>(e->IgnoreParenCasts());
     if (call) {
@@ -407,7 +410,10 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
       unsigned int argCount = call->getNumArgs();
       const Expr *const *args = call->getArgs();
       for (unsigned int i = 0; i < argCount; i += 1) {
-        stack.push(args[i]->IgnoreParenCasts());
+        // A CallExpr arg slot can be null (e.g. elided/default-arg
+        // placeholders). Skip nulls; the pop loop normalizes the rest.
+        if (args[i])
+          stack.push(args[i]);
       }
     }
     // If it's a conditional operator, push its sub-expressions
@@ -416,8 +422,8 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
     if (condOp) {
       // stack.push(condOp->getCond()->IgnoreParenCasts()); // The condition
       // will be checked separately
-      stack.push(condOp->getTrueExpr()->IgnoreParenCasts());
-      stack.push(condOp->getFalseExpr()->IgnoreParenCasts());
+      stack.push(condOp->getTrueExpr());
+      stack.push(condOp->getFalseExpr());
     }
 
     // GNU binary conditional `a ?: b`: traverse both the common operand
