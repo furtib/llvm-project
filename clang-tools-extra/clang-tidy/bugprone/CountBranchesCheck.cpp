@@ -74,18 +74,52 @@ static bool isEssentiallyDeclRefExpr(const Expr *e) {
   return false;
 }
 
-// Resolve an OpaqueValueExpr to its underlying source expression, then strip
-// parens/casts. clang introduces OpaqueValueExpr to model shared operands
-// (notably the common operand of a GNU `a ?: b` BinaryConditionalOperator), so
-// any tree walk must unwrap it or it will match none of the node handlers and
-// be silently dropped. Loops in case the source expr is itself opaque.
-static const Expr *unwrapOpaqueValueExpr(const Expr *e) {
+// Normalize an expression down to the node we actually want to reason about.
+//
+// `IgnoreParenCasts()` only strips parentheses and (implicit/explicit) casts.
+// In real C++ conditions the *top* node is very often a transparent wrapper
+// that `IgnoreParenCasts()` leaves in place, so without peeling these the node
+// matches none of the handlers in countDegree/countVarFuncAndOr and is silently
+// bucketed as unknown (-2). These wrappers carry no arithmetic meaning of their
+// own; the degree/variable content lives in their single sub-expression:
+//
+//   OpaqueValueExpr          shared operand of GNU `a ?: b`
+//   ExprWithCleanups         any condition that creates a temporary to destroy
+//   MaterializeTemporaryExpr binding a temporary (common with class operands)
+//   CXXBindTemporaryExpr     temporary with a non-trivial destructor
+//   ConstantExpr             C++ constant-evaluated condition wrapper
+//   SubstNonTypeTemplateParmExpr  NTTP substituted inside a template body
+//
+// We loop because these nest (e.g. ExprWithCleanups -> MaterializeTemporaryExpr
+// -> ... -> real expr) and interleave with parens/casts.
+static const Expr *unwrapTransparentExpr(const Expr *e) {
   while (e) {
     e = e->IgnoreParenCasts();
-    const auto *o = llvm::dyn_cast_or_null<OpaqueValueExpr>(e);
-    if (!o)
+    if (!e)
       break;
-    e = o->getSourceExpr();
+    if (const auto *o = llvm::dyn_cast<OpaqueValueExpr>(e)) {
+      e = o->getSourceExpr();
+      continue;
+    }
+    // FullExpr covers both ExprWithCleanups and ConstantExpr; peeling the
+    // base class handles both in one shot.
+    if (const auto *fe = llvm::dyn_cast<FullExpr>(e)) {
+      e = fe->getSubExpr();
+      continue;
+    }
+    if (const auto *mte = llvm::dyn_cast<MaterializeTemporaryExpr>(e)) {
+      e = mte->getSubExpr();
+      continue;
+    }
+    if (const auto *bte = llvm::dyn_cast<CXXBindTemporaryExpr>(e)) {
+      e = bte->getSubExpr();
+      continue;
+    }
+    if (const auto *nttp = llvm::dyn_cast<SubstNonTypeTemplateParmExpr>(e)) {
+      e = nttp->getReplacement();
+      continue;
+    }
+    break;
   }
   return e;
 }
@@ -208,7 +242,7 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
   // Normalize: strip parens/casts and resolve any OpaqueValueExpr (e.g. the
   // shared operand of a GNU `a ?: b`) up front, so every node handler below
   // sees the real underlying expression.
-  expr = unwrapOpaqueValueExpr(expr);
+  expr = unwrapTransparentExpr(expr);
   if (!expr)
     return 0;
   if (isLiteral(expr))
@@ -317,7 +351,7 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
     // Strip parens/casts and resolve OpaqueValueExpr on EVERY node (not just
     // the root), so opaque operands introduced inside the tree (e.g. by a GNU
     // `a ?: b`) are not silently dropped.
-    e = unwrapOpaqueValueExpr(e);
+    e = unwrapTransparentExpr(e);
     if (!e) {
       continue;
     }
