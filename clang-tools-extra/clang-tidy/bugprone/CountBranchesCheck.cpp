@@ -270,6 +270,13 @@ int CountBranchesCheck::countDegree(const Expr *expr) {
     // BINARY_OPERATION(Div, "/")
     // BINARY_OPERATION(Rem, "%")
     switch (binaryOp->getOpcode()) {
+    // The value of a plain assignment `x = e` is just `e`, so `if (x = true)`
+    // behaves exactly like `if (true)`. Take the degree from the RHS only.
+    // (Compound assignments like `*=`/`+=` are handled below, since their value
+    // depends on both operands.)
+    case BO_Assign:
+      deg = countDegree(binaryOp->getRHS());
+      break;
     // We intentionally ignore this!
     // The comma operator discards its LHS; the value (and thus the degree) of
     // `a, b` is just `b`. Only recurse into the RHS.
@@ -428,8 +435,17 @@ std::array<int, 4> CountBranchesCheck::countVarFuncAndOr(const Expr *expr) {
       //if (b->getOpcode() == BO_Comma) {
       //  stack.push(b->getRHS());
       //} else {
+      // A plain assignment `x = e` has value `e`, so `if (x = 0)` depends only
+      // on the RHS. Don't count the assigned-to variable on the LHS; descend
+      // into the RHS only (mirrors the degree handling of BO_Assign). Compound
+      // assignments (`+=`, `*=`, ...) genuinely use the LHS value, so they keep
+      // traversing both operands.
+      if (b->getOpcode() == BO_Assign) {
+        stack.push(b->getRHS());
+      } else {
         stack.push(b->getLHS());
         stack.push(b->getRHS());
+      }
       //}
     }
     // walk into parentheses
