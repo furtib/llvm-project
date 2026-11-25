@@ -69,9 +69,14 @@ void InvalidRegexPatternCheck::check(const MatchFinder::MatchResult &Result) {
     Flag = FlagEnum->getInitVal().getZExtValue();
   const llvm::Regex TestRegex(DetectedPattern->getString(), Flag);
   std::string RegexError;
-  if (!TestRegex.isValid(RegexError))
+  if (!TestRegex.isValid(RegexError)) {
     diag(DetectedPattern->getBeginLoc(), "invalid regex pattern: %0")
         << RegexError << DetectedPattern->getSourceRange();
+  }
+  else {
+    diag(DetectedPattern->getBeginLoc(), "valid regex pattern")
+        << DetectedPattern->getSourceRange();
+  }
 }
 
 } // namespace clang::tidy::llvm_check
