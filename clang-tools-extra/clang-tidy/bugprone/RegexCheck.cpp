@@ -65,6 +65,18 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                   .bind("string_view")))))
           .bind("constr"),
       this);
+
+  // Measurement matcher: every regex constructor, regardless of arguments.
+  Finder->addMatcher(
+      cxxConstructExpr(
+          hasDeclaration(cxxConstructorDecl(
+              unless(isCopyConstructor()), unless(isMoveConstructor()),
+              ofClass(anyOf(hasName("re2::RE2"),
+                            classTemplateSpecializationDecl(
+                                anyOf(hasName("std::basic_regex"),
+                                      hasName("boost::basic_regex"))))))))
+          .bind("allConstr"),
+      this);
 }
 
 std::pair<bool, std::string> RegexCheck::isValidRegex(std::string &&s, int type) {
@@ -103,6 +115,10 @@ std::pair<bool, std::string> RegexCheck::isValidRegex(std::string &&s, int type)
 }
 
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {
+  if (const auto *All = Result.Nodes.getNodeAs<CXXConstructExpr>("allConstr")) {
+    diag(All->getBeginLoc(), "regex constructor found");
+    return;
+  }
   const StringLiteral *stringlit =
       Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
   if (stringlit) {
@@ -129,9 +145,13 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
 
     // Check validity of the pattern
     std::pair<bool, std::string> validity = isValidRegex(stringlit->getString().str(), type);
-    if (!validity.first)
+    if (!validity.first){
       diag(stringlit->getBeginLoc(), "invalid regex pattern: %0")
           << validity.second << stringlit->getSourceRange();
+    } else{
+      diag(stringlit->getBeginLoc(), "valid regex pattern")
+          << stringlit->getSourceRange();
+    }
   }
   return;
 }
