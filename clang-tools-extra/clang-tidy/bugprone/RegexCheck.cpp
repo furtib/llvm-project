@@ -19,14 +19,41 @@ bool RegexCheck::isLanguageVersionSupported(const LangOptions &LangOpts) const {
   return LangOpts.CPlusPlus;
 }
 
+/*
+Things that should report but doesn't:
+RE2::Replace(new_query, (char*)"^(\\w+)  *@@([0-9A-Za-z_-]+) *", (char*)"SELECT variable_value AS '@@\\2' FROM global_variables WHERE variable_name='\\2' COLLATE NOCASE UNION ALL SELECT variable_value AS '@@\\2' FROM stats.stats_pgsql_global WHERE variable_name='\\2' COLLATE NOCASE");
+
+RE2("^SELECT\\s+@@[0-9A-Za-z_-]+\\s*", *opt2);
+
+struct CopyCmdMatcher {
+	re2::RE2::Options options;
+	re2::RE2 pattern;
+
+	CopyCmdMatcher() : 
+		options(RE2::Quiet), 
+		pattern(
+			R"(((?is)\bCOPY\b[^;]*?\bFROM\b[^;]*?\b(?:STDIN|STDOUT)\b))",
+			options) {
+	}
+
+	inline
+	bool match(const char* query, re2::StringPiece* matched = nullptr) const {
+		return re2::RE2::PartialMatch(query, pattern, matched);
+	}
+};
+
+char* patt = (char*)"`?([a-z\\d_]+)`?\\.`?([a-z\\d_]+)`?";
+RE2* re = new RE2(patt, *opt2);
+*/
+
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
   // main matcher
   auto isConstStdString = qualType(
       isConstQualified(), hasUnqualifiedDesugaredType(recordType(hasDeclaration(
                               cxxRecordDecl(hasName("::std::basic_string"))))));
-  auto getStringLit = ignoringImplicit(stringLiteral().bind("stringLiteral"));
+  auto getStringLit = ignoringImplicit(ignoringParenCasts(stringLiteral().bind("stringLiteral")));
   auto getStringLiteralFromStdString =
-      ignoringImplicit(cxxConstructExpr(hasAnyArgument(getStringLit)));
+      ignoringImplicit(ignoringParenCasts(cxxConstructExpr(hasAnyArgument(getStringLit))));
   auto isConstCharPtr = pointerType(pointee(builtinType(), isConstQualified()));
   Finder->addMatcher(
       cxxConstructExpr(
@@ -34,7 +61,7 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
               hasName("re2::RE2"), classTemplateSpecializationDecl(anyOf(
                                        hasName("std::basic_regex"),
                                        hasName("boost::basic_regex"))))))),
-          hasAnyArgument(ignoringImplicit(anyOf(
+          hasAnyArgument(ignoringImplicit(ignoringParenCasts(anyOf(
               stringLiteral().bind("stringLiteral"),
               declRefExpr(
                   to(varDecl(hasType(isConstStdString),
@@ -62,7 +89,14 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                                     stringLiteral().bind("stringLiteral")))))),
                             hasDescendant(
                                 stringLiteral().bind("stringLiteral"))))))
-                  .bind("string_view")))))
+                  .bind("string_view"),
+              // pattern wrapped in a conversion ctor (StringPiece, std::string
+              // ...), e.g. RE2("abc", options) or RE2(charptr, options).
+              getStringLiteralFromStdString,
+              cxxConstructExpr(hasAnyArgument(
+                  declRefExpr(to(varDecl(hasType(isConstCharPtr),
+                                         hasInitializer(getStringLit))))
+                      .bind("charptr"))))))))
           .bind("constr"),
       this);
 
