@@ -19,33 +19,6 @@ bool RegexCheck::isLanguageVersionSupported(const LangOptions &LangOpts) const {
   return LangOpts.CPlusPlus;
 }
 
-/*
-Things that should report but doesn't:
-RE2::Replace(new_query, (char*)"^(\\w+)  *@@([0-9A-Za-z_-]+) *", (char*)"SELECT variable_value AS '@@\\2' FROM global_variables WHERE variable_name='\\2' COLLATE NOCASE UNION ALL SELECT variable_value AS '@@\\2' FROM stats.stats_pgsql_global WHERE variable_name='\\2' COLLATE NOCASE");
-
-RE2("^SELECT\\s+@@[0-9A-Za-z_-]+\\s*", *opt2);
-
-struct CopyCmdMatcher {
-	re2::RE2::Options options;
-	re2::RE2 pattern;
-
-	CopyCmdMatcher() : 
-		options(RE2::Quiet), 
-		pattern(
-			R"(((?is)\bCOPY\b[^;]*?\bFROM\b[^;]*?\b(?:STDIN|STDOUT)\b))",
-			options) {
-	}
-
-	inline
-	bool match(const char* query, re2::StringPiece* matched = nullptr) const {
-		return re2::RE2::PartialMatch(query, pattern, matched);
-	}
-};
-
-char* patt = (char*)"`?([a-z\\d_]+)`?\\.`?([a-z\\d_]+)`?";
-RE2* re = new RE2(patt, *opt2);
-*/
-
 void RegexCheck::registerMatchers(MatchFinder *Finder) {
   // main matcher
   auto isConstStdString = qualType(
@@ -99,42 +72,6 @@ void RegexCheck::registerMatchers(MatchFinder *Finder) {
                       .bind("charptr"))))))))
           .bind("constr"),
       this);
-
-  // Measurement matcher: every regex constructor, regardless of arguments.
-  Finder->addMatcher(
-      cxxConstructExpr(
-          hasDeclaration(cxxConstructorDecl(
-              unless(isCopyConstructor()), unless(isMoveConstructor()),
-              ofClass(anyOf(hasName("re2::RE2"),
-                            classTemplateSpecializationDecl(
-                                anyOf(hasName("std::basic_regex"),
-                                      hasName("boost::basic_regex"))))))))
-          .bind("allConstr"),
-      this);
-
-  // Dynamic pattern counter: the pattern (first argument) is a function
-  // parameter or is built with +, directly or via a variable's initializer.
-  auto isPlus = expr(anyOf(cxxOperatorCallExpr(hasOverloadedOperatorName("+")),
-                           binaryOperator(hasOperatorName("+"))));
-  auto isDynamic =
-      expr(anyOf(isPlus, declRefExpr(to(varDecl(hasInitializer(
-                             anyOf(isPlus, hasDescendant(isPlus))))))));
-  Finder->addMatcher(
-      cxxConstructExpr(
-          hasDeclaration(cxxConstructorDecl(
-              unless(isCopyConstructor()), unless(isMoveConstructor()),
-              ofClass(anyOf(hasName("re2::RE2"),
-                            classTemplateSpecializationDecl(
-                                anyOf(hasName("std::basic_regex"),
-                                      hasName("boost::basic_regex"))))))),
-          // Also look through a conversion ctor (StringPiece, std::string...).
-          hasArgument(
-              0, ignoringImplicit(ignoringParenCasts(anyOf(
-                     isDynamic, cxxConstructExpr(hasArgument(
-                                    0, ignoringImplicit(
-                                           ignoringParenCasts(isDynamic)))))))))
-          .bind("dynamicConstr"),
-      this);
 }
 
 std::pair<bool, std::string> RegexCheck::isValidRegex(std::string &&s, int type) {
@@ -173,14 +110,6 @@ std::pair<bool, std::string> RegexCheck::isValidRegex(std::string &&s, int type)
 }
 
 void RegexCheck::check(const MatchFinder::MatchResult &Result) {
-  if (const auto *All = Result.Nodes.getNodeAs<CXXConstructExpr>("allConstr")) {
-    diag(All->getBeginLoc(), "regex constructor found");
-    return;
-  }
-  if (const auto *Dyn = Result.Nodes.getNodeAs<CXXConstructExpr>("dynamicConstr")) {
-    diag(Dyn->getBeginLoc(), "dynamic regex pattern");
-    return;
-  }
   const StringLiteral *stringlit =
       Result.Nodes.getNodeAs<StringLiteral>("stringLiteral");
   if (stringlit) {
@@ -207,13 +136,9 @@ void RegexCheck::check(const MatchFinder::MatchResult &Result) {
 
     // Check validity of the pattern
     std::pair<bool, std::string> validity = isValidRegex(stringlit->getString().str(), type);
-    if (!validity.first){
+    if (!validity.first)
       diag(stringlit->getBeginLoc(), "invalid regex pattern: %0")
           << validity.second << stringlit->getSourceRange();
-    } else{
-      diag(stringlit->getBeginLoc(), "valid regex pattern")
-          << stringlit->getSourceRange();
-    }
   }
   return;
 }
